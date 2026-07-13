@@ -160,7 +160,19 @@ public sealed class RoslynExtractor
 
         public override void VisitInvocationExpression(InvocationExpressionSyntax node)
         {
-            AddCall(_model.GetSymbolInfo(node), node);
+            // JS interop: JS.InvokeVoidAsync("fn", ...) — the C#→JavaScript boundary,
+            // captured without parsing any JS.
+            if (node.Expression is MemberAccessExpressionSyntax { Name.Identifier.Text: "InvokeAsync" or "InvokeVoidAsync" } &&
+                node.ArgumentList.Arguments.FirstOrDefault()?.Expression is LiteralExpressionSyntax { Token.Value: string jsName })
+            {
+                var jsId = "js:" + jsName;
+                _extraction.Nodes.Add(new Node { Id = jsId, Label = jsName, FileType = "concept", Type = "js_function", SourceFile = _relPath });
+                AddEdge(_scope.Peek(), jsId, Relation.Calls, Confidence.Inferred, Line(node), context: "call");
+            }
+            else
+            {
+                AddCall(_model.GetSymbolInfo(node), node);
+            }
             base.VisitInvocationExpression(node);
         }
 

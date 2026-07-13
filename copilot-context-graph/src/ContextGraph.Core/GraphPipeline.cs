@@ -11,12 +11,16 @@ public static class GraphPipeline
     {
         var loaded = await SolutionLoader.LoadAsync(path, ct);
         var extractor = new RoslynExtractor(loaded.RootDir);
+        var razorExtractor = new RazorExtractor(loaded.RootDir);
 
         var extractions = new List<Extraction>();
         foreach (var project in loaded.CSharpProjects)
             foreach (var document in project.Documents)
                 extractions.Add(await extractor.ExtractAsync(document, ct));
+        foreach (var razorFile in loaded.RazorFiles)
+            extractions.Add(razorExtractor.Extract(razorFile));
 
+        RazorResolver.Resolve(extractions);
         var graph = GraphBuilder.Build(extractions);
         return new BuildResult(graph, loaded, outDir ?? Path.Combine(loaded.RootDir, DefaultOutDir));
     }
