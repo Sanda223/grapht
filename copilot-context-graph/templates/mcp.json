@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "context-graph": {
+      "type": "stdio",
+      "command": "context-graph-mcp",
+      "args": ["--solution", "${workspaceFolder}"]
+    }
+  }
+}

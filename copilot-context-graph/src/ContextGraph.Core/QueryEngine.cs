@@ -219,6 +219,10 @@ public sealed partial class QueryEngine
         return seeds;
     }
 
+    /// <summary>Resolve a user-supplied name to a node id (or null). Precedence:
+    /// source-file exact → label/id exact → prefix → substring; ties by degree.</summary>
+    public string? ResolveNode(string query) => BestMatch(query);
+
     private string? BestMatch(string query)
     {
         var q = query.ToLowerInvariant();

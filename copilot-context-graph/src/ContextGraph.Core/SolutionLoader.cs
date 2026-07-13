@@ -25,7 +25,7 @@ public static class SolutionLoader
 
         var diagnostics = new List<string>();
         var workspace = MSBuildWorkspace.Create();
-        workspace.WorkspaceFailed += (_, e) => diagnostics.Add($"[{e.Diagnostic.Kind}] {e.Diagnostic.Message}");
+        workspace.RegisterWorkspaceFailedHandler(e => { lock (diagnostics) diagnostics.Add($"[{e.Diagnostic.Kind}] {e.Diagnostic.Message}"); });
 
         var solution = target.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
             ? (await workspace.OpenProjectAsync(target, cancellationToken: ct)).Solution
