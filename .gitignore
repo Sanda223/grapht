@@ -1,0 +1,17 @@
+# Original Graphify codebase, kept locally as a read-only reference.
+# Never committed: this repo contains only our own code.
+GRAPHIFY_reference folder/
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+artifacts/
+
+# Tool output
+graphify-out/
+context-graph-out/
+
+# OS / editor
+.DS_Store
