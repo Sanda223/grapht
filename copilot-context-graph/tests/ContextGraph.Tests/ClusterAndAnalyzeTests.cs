@@ -28,8 +28,9 @@ public class ClusterAndAnalyzeTests : IClassFixture<BuiltGraphFixture>
     public void ConnectedSiblingsShareACommunityAndLegacyIsSeparate()
     {
         Louvain.Cluster(_graph);
-        // Order/OrderLine/Total are tightly linked; LegacyBilling touches nothing outside its project.
-        Assert.Equal(_graph.Nodes["SampleApp.Domain.Order"].Community, _graph.Nodes["SampleApp.Domain.Order.Total"].Community);
+        // Order/OrderLine share a file and are directly linked; LegacyBilling touches
+        // nothing outside its own project so it must never share their community.
+        Assert.Equal(_graph.Nodes["SampleApp.Domain.Order"].Community, _graph.Nodes["SampleApp.Domain.OrderLine"].Community);
         Assert.NotEqual(_graph.Nodes["SampleApp.Domain.Order"].Community, _graph.Nodes["SampleApp.Legacy.LegacyBilling"].Community);
     }
 

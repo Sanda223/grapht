@@ -85,14 +85,13 @@ public static class Louvain
             for (var i = 0; i < n; i++)
                 membership[i] = renumber[local[membership[i]]];
 
-            // Aggregate: communities become the next level's nodes.
+            // Aggregate: communities become the next level's nodes. Intra-community weight
+            // becomes a self-loop — dropping it makes every level greedily merge upward.
             var aggregated = new Dictionary<(int, int), double>();
             foreach (var ((a, b), w) in currentWeights)
             {
                 int ca = renumber[local[a]], cb = renumber[local[b]];
-                if (ca == cb)
-                    continue;
-                var key = ca < cb ? (ca, cb) : (cb, ca);
+                var key = ca <= cb ? (ca, cb) : (cb, ca);
                 aggregated[key] = aggregated.GetValueOrDefault(key) + w;
             }
             var nextSize = renumber.Count;
@@ -113,6 +112,14 @@ public static class Louvain
         double m2 = 0; // 2 * total weight
         foreach (var ((a, b), w) in weights)
         {
+            if (a == b)
+            {
+                // Self-loop (aggregated intra-community weight): counts double toward the
+                // node's degree, contributes no neighbor link — it cancels in move gains.
+                degree[a] += 2 * w;
+                m2 += 2 * w;
+                continue;
+            }
             neighbors[a][b] = neighbors[a].GetValueOrDefault(b) + w;
             neighbors[b][a] = neighbors[b].GetValueOrDefault(a) + w;
             degree[a] += w;

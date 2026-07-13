@@ -13,6 +13,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>context-graph</ToolCommandName>
+    <PackageId>ContextGraph.Cli</PackageId>
+    <Version>0.1.0</Version>
+    <Description>Knowledge graph CLI for .NET solutions: build, query, path, explain.</Description>
   </PropertyGroup>
 
 </Project>

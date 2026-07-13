@@ -12,6 +12,7 @@ artifacts/
 # Tool output
 graphify-out/
 context-graph-out/
+nupkg/
 
 # OS / editor
 .DS_Store

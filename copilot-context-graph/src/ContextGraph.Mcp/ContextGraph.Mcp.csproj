@@ -14,6 +14,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>context-graph-mcp</ToolCommandName>
+    <PackageId>ContextGraph.Mcp</PackageId>
+    <Version>0.1.0</Version>
+    <Description>MCP stdio server exposing an always-fresh knowledge graph of a .NET solution to GitHub Copilot.</Description>
   </PropertyGroup>
 
 </Project>
