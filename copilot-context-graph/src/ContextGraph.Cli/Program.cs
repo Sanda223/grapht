@@ -58,6 +58,79 @@ static string GitCommit(string rootDir)
     }
 }
 
+// --- query verbs (operate on an existing graph.json) ---
+
+var graphOption = new Option<string>("--graph") { Description = "Path to graph.json", DefaultValueFactory = _ => Path.Combine(GraphPipeline.DefaultOutDir, "graph.json") };
+
+QueryEngine LoadEngine(string graphPath)
+{
+    if (!File.Exists(graphPath))
+    {
+        Console.Error.WriteLine($"No graph at {graphPath} — run `context-graph build` first.");
+        Environment.Exit(1);
+    }
+    return new QueryEngine(JsonExporter.Read(graphPath));
+}
+
+var questionArg = new Argument<string>("question") { Description = "Plain-language question" };
+var dfsOption = new Option<bool>("--dfs") { Description = "Depth-first traversal (trace a specific path)" };
+var depthOption = new Option<int>("--depth") { Description = "Traversal depth", DefaultValueFactory = _ => 2 };
+var budgetOption = new Option<int>("--budget") { Description = "Answer token budget", DefaultValueFactory = _ => 2000 };
+
+var queryCmd = new Command("query", "Traverse the graph from the concepts in a question");
+queryCmd.Arguments.Add(questionArg);
+queryCmd.Options.Add(graphOption);
+queryCmd.Options.Add(dfsOption);
+queryCmd.Options.Add(depthOption);
+queryCmd.Options.Add(budgetOption);
+queryCmd.SetAction(parseResult =>
+{
+    var engine = LoadEngine(parseResult.GetValue(graphOption)!);
+    Console.WriteLine(engine.Query(
+        parseResult.GetValue(questionArg)!,
+        dfs: parseResult.GetValue(dfsOption),
+        depth: parseResult.GetValue(depthOption),
+        tokenBudget: parseResult.GetValue(budgetOption)));
+    return 0;
+});
+
+var sourceArg = new Argument<string>("source") { Description = "Start concept" };
+var targetArg = new Argument<string>("target") { Description = "End concept" };
+var pathCmd = new Command("path", "Shortest path between two concepts");
+pathCmd.Arguments.Add(sourceArg);
+pathCmd.Arguments.Add(targetArg);
+pathCmd.Options.Add(graphOption);
+pathCmd.SetAction(parseResult =>
+{
+    var engine = LoadEngine(parseResult.GetValue(graphOption)!);
+    Console.WriteLine(engine.Path(parseResult.GetValue(sourceArg)!, parseResult.GetValue(targetArg)!));
+    return 0;
+});
+
+var labelArg = new Argument<string>("label") { Description = "Node label or id" };
+var explainCmd = new Command("explain", "Show a node and all its connections");
+explainCmd.Arguments.Add(labelArg);
+explainCmd.Options.Add(graphOption);
+explainCmd.SetAction(parseResult =>
+{
+    var engine = LoadEngine(parseResult.GetValue(graphOption)!);
+    Console.WriteLine(engine.Explain(parseResult.GetValue(labelArg)!));
+    return 0;
+});
+
+var statsCmd = new Command("stats", "Graph size and confidence breakdown");
+statsCmd.Options.Add(graphOption);
+statsCmd.SetAction(parseResult =>
+{
+    var engine = LoadEngine(parseResult.GetValue(graphOption)!);
+    Console.WriteLine(engine.Stats());
+    return 0;
+});
+
 var root = new RootCommand("context-graph: knowledge graph for .NET solutions");
 root.Subcommands.Add(buildCmd);
+root.Subcommands.Add(queryCmd);
+root.Subcommands.Add(pathCmd);
+root.Subcommands.Add(explainCmd);
+root.Subcommands.Add(statsCmd);
 return await root.Parse(args).InvokeAsync();
