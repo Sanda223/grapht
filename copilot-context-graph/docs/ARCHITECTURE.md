@@ -124,8 +124,7 @@ Rules:
 
 ### 4.3 SolutionLoader
 
-- `MSBuildLocator.RegisterDefaults()` before any `Microsoft.CodeAnalysis` type is loaded (hard MSBuild requirement — isolate in its own method so JIT doesn't touch Roslyn types first).
-- `MSBuildWorkspace.OpenSolutionAsync`, collect `WorkspaceFailed` diagnostics; report them in `GRAPH_REPORT.md` instead of failing the run.
+- `MSBuildWorkspace.OpenSolutionAsync`, collect `WorkspaceFailed` diagnostics; report them in `GRAPH_REPORT.md` instead of failing the run. (No `Microsoft.Build.Locator` needed: Roslyn ≥ 4.12 discovers MSBuild via its out-of-process BuildHost, and Locator's build-time guard actually breaks the build if referenced alongside it.)
 - Legacy .NET Framework csproj: loads via the same path when VS Build Tools/MSBuild are present; missing reference assemblies produce a degraded semantic model → §4.1's AMBIGUOUS fallback keeps output honest.
 - Razor files are enumerated from disk (`AdditionalDocuments` is unreliable across project styles).
 

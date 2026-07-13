@@ -1,0 +1,17 @@
+@using SampleApp.Domain
+@inject IJSRuntime JS
+
+<div class="order-card" @onclick="Highlight">
+    <span>Order @Order?.Id</span>
+    <span>@Order?.Total()</span>
+</div>
+
+@code {
+    [Parameter]
+    public Order? Order { get; set; }
+
+    private async Task Highlight()
+    {
+        await JS.InvokeVoidAsync("highlightCard", Order?.Id);
+    }
+}

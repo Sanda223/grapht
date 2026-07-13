@@ -1,0 +1,24 @@
+@page "/orders"
+@using SampleApp.Domain
+@using SampleApp.Services
+@inject OrderService Service
+
+<h1>Orders</h1>
+
+@foreach (var order in _orders)
+{
+    <OrderCard Order="order" />
+}
+
+@code {
+    private List<Order> _orders = new();
+
+    protected override void OnInitialized()
+    {
+        var found = Service.Lookup(1);
+        if (found is not null)
+        {
+            _orders.Add(found);
+        }
+    }
+}

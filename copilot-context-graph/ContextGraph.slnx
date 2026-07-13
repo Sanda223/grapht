@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ContextGraph.Cli/ContextGraph.Cli.csproj" />
+    <Project Path="src/ContextGraph.Core/ContextGraph.Core.csproj" />
+    <Project Path="src/ContextGraph.Mcp/ContextGraph.Mcp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ContextGraph.Tests/ContextGraph.Tests.csproj" />
+  </Folder>
+</Solution>

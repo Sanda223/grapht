@@ -5,10 +5,10 @@ Build order for copilot-context-graph. Each milestone ends runnable and verifiab
 ## M0 — Scaffold
 
 - `ContextGraph.sln`, projects `src/ContextGraph.Core`, `src/ContextGraph.Cli`, `src/ContextGraph.Mcp`, `tests/ContextGraph.Tests` (net10.0).
-- Packages: `Microsoft.CodeAnalysis.CSharp.Workspaces`, `Microsoft.CodeAnalysis.Workspaces.MSBuild`, `Microsoft.Build.Locator`, `System.CommandLine`, `ModelContextProtocol`, `xunit`.
-- Test fixture: `tests/fixtures/SampleApp/` — small solution with 2 class-library projects + 1 Blazor WASM project + 1 legacy-style csproj.
+- Packages: `Microsoft.CodeAnalysis.CSharp.Workspaces`, `Microsoft.CodeAnalysis.Workspaces.MSBuild`, `System.CommandLine`, `ModelContextProtocol`, `xunit`. (Not `Microsoft.Build.Locator` — see §4.3.)
+- Test fixture: `tests/fixtures/SampleApp/` — small solution with 2 class-library projects + 1 Razor class library (Blazor components) + 1 legacy-style csproj. The legacy project intentionally does not compile with `dotnet build` on macOS; it exists to exercise load diagnostics and the AMBIGUOUS fallback.
 
-**Done when:** `dotnet build` and `dotnet test` pass (one placeholder test).
+**Done when:** `dotnet build` and `dotnet test` pass (one placeholder test). ✅ 2026-07-13
 
 ## M1 — Load a solution
 
