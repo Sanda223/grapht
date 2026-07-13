@@ -5,9 +5,12 @@ var pathArg = new Argument<string>("path") { Description = "Directory, .sln/.sln
 
 var outOption = new Option<string?>("--out") { Description = "Output directory (default: <root>/context-graph-out)" };
 
+var noHtmlOption = new Option<bool>("--no-html") { Description = "Skip graph.html generation" };
+
 var buildCmd = new Command("build", "Build the knowledge graph for a solution");
 buildCmd.Arguments.Add(pathArg);
 buildCmd.Options.Add(outOption);
+buildCmd.Options.Add(noHtmlOption);
 buildCmd.SetAction(async (parseResult, ct) =>
 {
     var path = parseResult.GetValue(pathArg)!;
@@ -25,9 +28,12 @@ buildCmd.SetAction(async (parseResult, ct) =>
             Console.WriteLine($"  {diagnostic}");
     }
 
-    var graphPath = Path.Combine(result.OutDir, "graph.json");
-    JsonExporter.Write(result.Graph, graphPath, GitCommit(result.Loaded.RootDir));
-    Console.WriteLine($"\n{result.Graph.NodeCount} nodes, {result.Graph.EdgeCount} edges -> {graphPath}");
+    var (graphJson, report, html) = GraphPipeline.ExportAll(result, GitCommit(result.Loaded.RootDir), html: !parseResult.GetValue(noHtmlOption));
+    Console.WriteLine($"\n{result.Graph.NodeCount} nodes, {result.Graph.EdgeCount} edges, {result.Analysis.Communities.Count} communities");
+    Console.WriteLine($"  {graphJson}");
+    Console.WriteLine($"  {report}");
+    if (!parseResult.GetValue(noHtmlOption))
+        Console.WriteLine($"  {html}");
     return 0;
 });
 
