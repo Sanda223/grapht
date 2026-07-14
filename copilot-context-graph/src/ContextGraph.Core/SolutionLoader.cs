@@ -22,7 +22,7 @@ public sealed record LoadedSolution(
 
 public static class SolutionLoader
 {
-    private static readonly string[] SkipDirs = ["bin", "obj", "node_modules", ".git"];
+    private static readonly string[] SkipDirs = ["bin", "obj", "node_modules", ".git", GraphPipeline.DefaultOutDir];
 
     /// <summary>Load a solution/project. <paramref name="path"/> may be a directory, .sln, .slnx, or .csproj.</summary>
     public static async Task<LoadedSolution> LoadAsync(string path, CancellationToken ct = default)
@@ -88,7 +88,7 @@ public static class SolutionLoader
         Path.GetExtension(name).ToLowerInvariant() switch
         {
             ".js" => !name.EndsWith(".min.js", StringComparison.OrdinalIgnoreCase),
-            ".sql" or ".bicep" => true,
+            ".md" or ".sql" or ".bicep" => true,
             ".json" => name.StartsWith("appsettings", StringComparison.OrdinalIgnoreCase),
             ".yml" or ".yaml" => true, // dispatcher sniffs compose vs pipeline vs other
             _ => false,

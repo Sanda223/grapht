@@ -8,6 +8,7 @@ public static class ExtraFileExtractor
         Path.GetExtension(filePath).ToLowerInvariant() switch
         {
             ".js" => JsExtractor.Extract(filePath, rootDir),
+            ".md" => MarkdownExtractor.Extract(filePath, rootDir),
             ".sql" => SqlExtractor.Extract(filePath, rootDir),
             ".bicep" => InfraExtractor.ExtractBicep(filePath, rootDir),
             ".json" => ConfigExtractor.Extract(filePath, rootDir),
