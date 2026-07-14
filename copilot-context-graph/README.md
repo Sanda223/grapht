@@ -8,6 +8,8 @@ Inspired by [Graphify](https://github.com/Graphify-Labs/graphify) (MIT, © Safi 
 
 ## Quick start
 
+Full fresh-machine instructions (prerequisites, PATH setup, macOS/Windows notes, troubleshooting): see the **[Full setup guide](#full-setup-guide-fresh-machine)** at the bottom of this file.
+
 ```bash
 # from the repo root
 dotnet pack src/ContextGraph.Cli -o nupkg
@@ -67,6 +69,148 @@ docs/                     ARCHITECTURE.md (the build spec) and ROADMAP.md
 ```
 
 Requires the .NET 10 SDK. Analyzed projects can be anything Roslyn loads — SDK-style and legacy .NET Framework csproj (the latter needs MSBuild/VS Build Tools for full resolution; otherwise it degrades to AMBIGUOUS-tagged syntax extraction).
+
+---
+
+# Full setup guide (fresh machine)
+
+Everything below assumes a machine that has never seen this tool. Commands are identical on macOS and Windows unless a platform note says otherwise (macOS: Terminal/zsh; Windows: PowerShell).
+
+## 1. Prerequisites
+
+| Requirement | Why | Check |
+|---|---|---|
+| **.NET 10 SDK** | builds and runs the tools | `dotnet --list-sdks` shows a `10.x` entry |
+| **Git** | clone this repo | `git --version` |
+| **VS Code + GitHub Copilot extension** | only needed for the MCP/Copilot integration — the CLI works without it | Copilot Chat opens in VS Code |
+
+- .NET 10 SDK: <https://dotnet.microsoft.com/download/dotnet/10.0> (macOS: pkg installer; Windows: exe installer, or `winget install Microsoft.DotNet.SDK.10`).
+- **Windows only, optional:** to analyze legacy .NET *Framework* (non-SDK-style) projects with full symbol resolution, have Visual Studio or [VS Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) installed. Without them, legacy projects still load but degrade to `AMBIGUOUS`-tagged extraction (the report tells you when this happens). Modern SDK-style projects need nothing extra on either OS.
+
+## 2. Get the code and build the packages
+
+```bash
+git clone https://github.com/Sanda223/copilot-context-graph.git
+cd copilot-context-graph
+dotnet pack src/ContextGraph.Cli -o nupkg
+dotnet pack src/ContextGraph.Mcp -o nupkg
+```
+
+This produces two local NuGet packages in `./nupkg`. Nothing is published anywhere — the tool is not on nuget.org, which is why every install command below needs `--add-source`.
+
+## 3. Install the two tools globally
+
+```bash
+dotnet tool install -g ContextGraph.Cli --add-source ./nupkg
+dotnet tool install -g ContextGraph.Mcp --add-source ./nupkg
+```
+
+This installs two commands machine-wide (it does not matter what folder you run this from):
+
+- `context-graph` — the CLI (build/query/path/explain/stats)
+- `context-graph-mcp` — the MCP server VS Code will launch for Copilot
+
+## 4. Make sure the tools are on PATH
+
+Global dotnet tools live in `~/.dotnet/tools` (macOS) / `%USERPROFILE%\.dotnet\tools` (Windows).
+
+- **Windows:** the .NET installer adds this to PATH automatically. Open a *new* terminal and run `context-graph --help`. If it's not found: `setx PATH "%PATH%;%USERPROFILE%\.dotnet\tools"` and open a new terminal.
+- **macOS:** the installer's PATH entry is broken on some setups (it writes a literal unexpanded `~` into `/etc/paths.d/dotnet-cli-tools`). Fix it once:
+
+  ```bash
+  cat << \EOF >> ~/.zprofile
+  export PATH="$PATH:$HOME/.dotnet/tools"
+  EOF
+  export PATH="$PATH:$HOME/.dotnet/tools"   # current session too
+  ```
+
+**Verify:** `context-graph --help` prints the command list. If so, installation is done.
+
+## 5. Use the CLI on any solution
+
+```bash
+cd path/to/YourSolution
+dotnet restore            # important: full symbol resolution needs restored packages
+context-graph build
+```
+
+Outputs land in `context-graph-out/`:
+
+| File | What it is |
+|---|---|
+| `graph.html` | clickable visual map — open in any browser, works fully offline |
+| `GRAPH_REPORT.md` | written summary: communities, god nodes, surprises, suggested questions, load diagnostics |
+| `graph.json` | the raw graph (stable documented format) |
+
+Then query from the terminal anytime:
+
+```bash
+context-graph query "how does checkout work"
+context-graph path "Checkout.razor" "Order"
+context-graph explain "IBasketService"
+context-graph stats
+```
+
+## 6. Wire up Copilot (the MCP server)
+
+Do this once per solution you want Copilot to understand.
+
+**a.** Create `.vscode/mcp.json` in the solution root:
+
+```json
+{
+  "servers": {
+    "context-graph": {
+      "type": "stdio",
+      "command": "context-graph-mcp",
+      "args": ["--solution", "${workspaceFolder}"]
+    }
+  }
+}
+```
+
+**b.** Copy the contents of [`templates/copilot-instructions-snippet.md`](templates/copilot-instructions-snippet.md) into the solution's `.github/copilot-instructions.md` (create the file if it doesn't exist). This teaches Copilot the intended workflow: *use the graph to locate code, then read the referenced files, then answer from code.*
+
+**c.** Open the solution folder in VS Code (or reload the window). Approve the MCP server if VS Code asks. The server builds the graph in the background — the first minute after opening, answers may come from a still-warming graph.
+
+**d.** Verify: open Copilot Chat in **agent mode**, click the tools icon in the chat input — a `context-graph` server should list 8 tools (`query_graph`, `shortest_path`, `impact_of_change`, `get_node`, `get_neighbors`, `god_nodes`, `graph_stats`, `rebuild_graph`).
+
+From here there is no daily workflow: the file watcher keeps the graph fresh on every save, and Copilot calls the tools on its own when you ask structural questions ("what calls X?", "what breaks if I change Y?", "how do these connect?").
+
+## 7. Updating the tool later
+
+```bash
+cd copilot-context-graph
+git pull
+dotnet pack src/ContextGraph.Cli -o nupkg
+dotnet pack src/ContextGraph.Mcp -o nupkg
+dotnet tool update -g ContextGraph.Cli --add-source ./nupkg
+dotnet tool update -g ContextGraph.Mcp --add-source ./nupkg
+```
+
+(`dotnet tool update` only swaps binaries when the version number changed; bump `<Version>` in both csproj files when making local changes.) After updating, reload any VS Code window running the MCP server.
+
+## 8. Uninstall
+
+```bash
+dotnet tool uninstall -g ContextGraph.Cli
+dotnet tool uninstall -g ContextGraph.Mcp
+```
+
+Per-project traces are just the two files you added (`.vscode/mcp.json`, the instructions section) plus the `context-graph-out/` folder.
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `command not found: context-graph` | PATH — see step 4; open a new terminal after fixing |
+| `ContextGraph.Cli is not found in NuGet feeds` | you forgot `--add-source ./nupkg`, or you're not in the repo folder — the packages are local-only |
+| Graph builds but has few `calls` edges | you skipped `dotnet restore` before `context-graph build` |
+| Lots of `[Failure] Msbuild failed … vulnerability` diagnostics | NuGet audit noise from the target solution; extraction continues, ignore |
+| `Android SDK directory could not be found` diagnostics | the solution has MAUI mobile targets you can't build locally; those targets load degraded, the rest is unaffected |
+| Copilot doesn't show the tools | check `.vscode/mcp.json` location/spelling; View → Output → "MCP" for the server log; make sure Copilot Chat is in **agent mode** |
+| First tool call is slow after opening VS Code | expected — the graph is building in the background; big solutions take a minute or two |
+| `graph.html` says "too large to render" | the graph exceeds 5,000 nodes; use the CLI/MCP queries and the report instead (a community-aggregated view is on the roadmap) |
 
 ## License
 
