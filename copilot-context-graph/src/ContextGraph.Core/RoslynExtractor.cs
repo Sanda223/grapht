@@ -189,7 +189,11 @@ public sealed class RoslynExtractor
 
         public override void VisitInvocationExpression(InvocationExpressionSyntax node)
         {
-            if (!TryStringContractCall(node) && !TryFrameworkCall(node))
+            // Contract detection is additive: a user-declared method that happens to be
+            // named GetAsync/Query/… must still get its real `calls` edge (AddCall filters
+            // to in-source targets, so framework receivers stay no-ops anyway).
+            TryStringContractCall(node);
+            if (!TryFrameworkCall(node))
                 AddCall(_model.GetSymbolInfo(node), node);
             base.VisitInvocationExpression(node);
         }
@@ -202,11 +206,12 @@ public sealed class RoslynExtractor
 
         /// <summary>Calls whose first string-literal argument is a cross-boundary contract:
         /// JS interop, SignalR hub methods and events, HTTP client requests. Receiver type
-        /// names disambiguate (HubConnection vs IJSRuntime vs IClientProxy).</summary>
-        private bool TryStringContractCall(InvocationExpressionSyntax node)
+        /// names disambiguate (HubConnection vs IJSRuntime vs IClientProxy). Additive:
+        /// emits contract edges alongside — never instead of — the ordinary call edge.</summary>
+        private void TryStringContractCall(InvocationExpressionSyntax node)
         {
             if (node.Expression is not MemberAccessExpressionSyntax member)
-                return false;
+                return;
             var methodName = member.Name.Identifier.Text;
             var firstArg = node.ArgumentList.Arguments.FirstOrDefault()?.Expression;
 
@@ -216,10 +221,10 @@ public sealed class RoslynExtractor
             {
                 var textChunks = string.Join(" ", interpolated.Contents.OfType<InterpolatedStringTextSyntax>().Select(t => t.TextToken.ValueText));
                 ScanSqlLiteral(textChunks, node);
-                return true;
+                return;
             }
             if (firstArg is not LiteralExpressionSyntax { Token.Value: string literal })
-                return false;
+                return;
             var receiver = _model.GetTypeInfo(member.Expression).Type?.Name ?? "";
 
             switch (methodName)
@@ -228,55 +233,53 @@ public sealed class RoslynExtractor
                 case "InvokeAsync" or "SendAsync" when receiver == "HubConnection":
                     // Placeholder; resolved against methods on Hub-derived types, else dropped.
                     AddEdge(_scope.Peek(), "hubmethod:" + literal, Relation.Calls, Confidence.Extracted, Line(node), context: "call");
-                    return true;
+                    return;
 
-                // C# → JS: JS.InvokeVoidAsync("fn", …).
-                case "InvokeAsync" or "InvokeVoidAsync":
+                // C# → JS: JS.InvokeVoidAsync("fn", …). Gated to IJSRuntime-family
+                // receivers ("" = degraded load where the receiver type didn't resolve).
+                case "InvokeAsync" or "InvokeVoidAsync" when receiver.Contains("JS") || receiver == "":
                     // No SourceFile: stub — the defining .js file supplies the location on merge.
                     _extraction.Nodes.Add(new Node { Id = "js:" + literal, Label = literal, FileType = "concept", Type = "js_function" });
                     AddEdge(_scope.Peek(), "js:" + literal, Relation.Calls, Confidence.Inferred, Line(node), context: "call");
-                    return true;
+                    return;
 
-                // Server → clients: Clients.All.SendAsync("Event", …).
-                case "SendAsync":
-                {
-                    var confidence = receiver.StartsWith("IClientProxy") || receiver.StartsWith("IHub") || receiver.StartsWith("ISingleClient")
-                        ? Confidence.Extracted : Confidence.Inferred;
+                // Server → clients: Clients.All.SendAsync("Event", …). Receiver-gated so a
+                // mail client's SendAsync("subject") doesn't mint a phantom event node.
+                case "SendAsync" when receiver.StartsWith("IClientProxy") || receiver.StartsWith("IHub") || receiver.StartsWith("ISingleClient"):
                     _extraction.Nodes.Add(new Node { Id = "event:" + literal, Label = literal, FileType = "concept", Type = "signalr_event" });
-                    AddEdge(_scope.Peek(), "event:" + literal, Relation.Publishes, confidence, Line(node));
-                    return true;
-                }
+                    AddEdge(_scope.Peek(), "event:" + literal, Relation.Publishes, Confidence.Extracted, Line(node));
+                    return;
 
                 // Client handler: connection.On("Event", handler).
-                case "On" when receiver is "HubConnection" or "" && node.ArgumentList.Arguments.Count >= 2:
+                case "On" when receiver == "HubConnection" && node.ArgumentList.Arguments.Count >= 2:
                     _extraction.Nodes.Add(new Node { Id = "event:" + literal, Label = literal, FileType = "concept", Type = "signalr_event" });
-                    AddEdge(_scope.Peek(), "event:" + literal, Relation.Consumes,
-                        receiver == "HubConnection" ? Confidence.Extracted : Confidence.Inferred, Line(node));
-                    return true;
+                    AddEdge(_scope.Peek(), "event:" + literal, Relation.Consumes, Confidence.Extracted, Line(node));
+                    return;
 
-                // HTTP client: http.GetAsync("api/orders/…").
-                case var _ when HttpClientMethods.Contains(methodName):
+                // HTTP client: http.GetAsync("api/orders/…"). Receiver-gated to HttpClient so
+                // a cache's GetAsync("user:1") doesn't become a phantom route.
+                case var _ when HttpClientMethods.Contains(methodName) && receiver == "HttpClient":
                     var routeId = "route:" + NormalizeRoute(literal);
                     _extraction.Nodes.Add(new Node { Id = routeId, Label = NormalizeRoute(literal), FileType = "concept", Type = "route" });
                     AddEdge(_scope.Peek(), routeId, Relation.Calls, Confidence.Inferred, Line(node), context: "http");
-                    return true;
+                    return;
 
-                // Config reads: config.GetSection("Features") / GetValue<T>("A:B") / GetConnectionString("Default").
-                case "GetSection" or "GetValue" or "GetConnectionString":
+                // Config reads: config.GetSection("Features") / GetValue<T>("A:B") /
+                // GetConnectionString("Default"). Receiver-gated to *Configuration* types so a
+                // dictionary wrapper's GetValue doesn't fabricate a config read.
+                case "GetSection" or "GetValue" or "GetConnectionString" when receiver.Contains("Configuration"):
                 {
                     var key = methodName == "GetConnectionString" ? "ConnectionStrings:" + literal : literal;
-                    var confidence = receiver.Contains("Configuration") ? Confidence.Extracted : Confidence.Inferred;
                     // No node declared: appsettings extraction supplies it, else the edge drops.
-                    AddEdge(_scope.Peek(), "config:" + key, Relation.References, confidence, Line(node), context: "config");
-                    return true;
+                    AddEdge(_scope.Peek(), "config:" + key, Relation.References, Confidence.Extracted, Line(node), context: "config");
+                    return;
                 }
 
                 // Dapper: conn.QueryAsync("SELECT … FROM Orders") — mine the SQL literal.
                 case var _ when DapperMethods.Contains(methodName):
                     ScanSqlLiteral(literal, node);
-                    return true;
+                    return;
             }
-            return false;
         }
 
         private static readonly HashSet<string> DapperMethods =

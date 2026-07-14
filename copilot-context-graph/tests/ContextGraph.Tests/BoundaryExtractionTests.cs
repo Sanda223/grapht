@@ -59,6 +59,25 @@ public class BoundaryExtractionTests : IClassFixture<BuiltGraphFixture>
     }
 
     [Fact]
+    public void UserMethodNamedLikeHttpVerbKeepsItsCallEdgeAndMintsNoRoute()
+    {
+        // cache.GetAsync("user:current") — real call edge preserved, no phantom route node.
+        Assert.Contains(_graph.Edges, e =>
+            e.Source == "SampleApp.Services.CacheReader.CurrentUser" &&
+            e.Target == "SampleApp.Services.CacheStub.GetAsync" &&
+            e.Relation == Relation.Calls && e.Confidence == Confidence.Extracted);
+        Assert.False(_graph.Nodes.ContainsKey("route:/user:current"));
+    }
+
+    [Fact]
+    public void ExactNameBeatsFuzzyDegreeRanking()
+    {
+        // "Total" must resolve to Total(), not the higher-degree prefix match Totals().
+        var engine = new QueryEngine(_graph);
+        Assert.Contains("ID:        SampleApp.Domain.Order.Total", engine.Explain("Total"));
+    }
+
+    [Fact]
     public void HubConnectionInvokeResolvesToHubMethodNotJsInterop()
     {
         Assert.Contains(_graph.Edges, e =>

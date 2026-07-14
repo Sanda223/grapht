@@ -248,8 +248,8 @@ public sealed partial class QueryEngine
         // empty, so a class never collides with its own constructor.
         if (exact.Count == 0)
             exact = ExactMatches(n => n.Label.Equals(q + "()", StringComparison.OrdinalIgnoreCase));
-        if (exact.Count > 1)
-            return exact;
+        if (exact.Count > 0)
+            return exact; // 1 = the node; >1 = genuine ambiguity for the caller to surface
         return BestMatch(query) is { } single ? [single] : [];
 
         List<string> ExactMatches(Func<Node, bool> predicate) =>

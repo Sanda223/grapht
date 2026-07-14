@@ -28,6 +28,8 @@ context-graph query "how does the basket checkout work"
 context-graph path "Checkout.razor" "Order"
 context-graph explain "IBasketService"
 context-graph stats
+context-graph diff base.json head.json   # structural diff between two builds (PR-ready markdown)
+context-graph report-usage               # summarize MCP tool usage from the query log
 ```
 
 `graph.html` is a single self-contained file (vendored vis-network, zero network access) — open it in any browser for the clickable community-colored map.
@@ -53,6 +55,7 @@ Copilot then answers architecture questions through the graph:
 
 - **C# (Roslyn semantic):** classes, interfaces, structs, records, enums, methods; `calls` (resolved to the exact symbol, cross-project), `inherits`/`implements`, `imports`, typed `references` (field / parameter / return / generic / attribute). Only symbols declared in your source become nodes — BCL/NuGet noise never enters.
 - **Blazor/Razor (scanner):** components, `@page` routes, `@inject` wiring, component-tag usage, `@code` methods, calls through injected services, and `IJSRuntime` interop (`js:` nodes) — the C#→JavaScript boundary without parsing JS.
+- **Docs linked to code** — markdown headings and doc↔doc links are graphed, and backticked identifiers in prose resolve to the code they mention, so "which doc explains X" is a graph lookup.
 - **The seams between technologies** — the places grep fails hardest: NuGet packages per project (with version drift visible), DI registrations (`bound_to` — what the container *actually* injects), MassTransit publish/consume flows joined through message contracts, both directions of JS interop, attribute routes shared between API controllers and HttpClient callers, SignalR events and hub methods, SQL tables/procs linked from migrations *and* Dapper call sites, appsettings keys with their readers (and unread keys exposed), Bicep/docker-compose/pipeline infra.
 - **Every edge carries a confidence tag:** `EXTRACTED` (semantically resolved), `INFERRED` (heuristic, e.g. razor service calls), `AMBIGUOUS` (couldn't resolve — e.g. degraded legacy-project loads). Legacy .NET Framework csproj files load with diagnostics instead of failing.
 - **Louvain community detection** (deterministic, hand-rolled) names each cluster after its hub; `GRAPH_REPORT.md` lists god nodes, surprising cross-project connections, and suggested questions.
@@ -157,6 +160,8 @@ context-graph query "how does checkout work"
 context-graph path "Checkout.razor" "Order"
 context-graph explain "IBasketService"
 context-graph stats
+context-graph diff base.json head.json   # structural diff (PR-comment ready)
+context-graph report-usage               # MCP tool-usage summary
 ```
 
 ## 6. Wire up Copilot (the MCP server)
