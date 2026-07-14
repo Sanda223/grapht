@@ -9,13 +9,13 @@ public static class HtmlExporter
 {
     public const int MaxNodesForViz = 5000;
 
-    public static void Write(KnowledgeGraph graph, Analysis analysis, string path)
+    public static void Write(KnowledgeGraph graph, Analysis analysis, string path, int maxNodes = MaxNodesForViz)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        if (graph.NodeCount > MaxNodesForViz)
+        if (graph.NodeCount > maxNodes)
         {
-            File.WriteAllText(path, $"<h1>Graph too large to render ({graph.NodeCount} nodes > {MaxNodesForViz})</h1>" +
-                                    "<p>Use <code>context-graph query</code> or the MCP tools instead.</p>");
+            // Too many nodes to render individually: aggregate to one node per community.
+            WriteMetaGraph(graph, analysis, path);
             return;
         }
 
@@ -53,6 +53,58 @@ public static class HtmlExporter
             .Replace("__VIS_JS__", VisJs())
             .Replace("__DATA__", data);
         File.WriteAllText(path, html);
+    }
+
+    /// <summary>One node per community, sized by member count; edges weighted by how many
+    /// relationships cross the pair. Readable at any scale.</summary>
+    private static void WriteMetaGraph(KnowledgeGraph graph, Analysis analysis, string path)
+    {
+        var palette = Palette(analysis.Communities.Count);
+        var nodes = analysis.Communities.OrderBy(kv => kv.Key).Select(kv => new
+        {
+            id = "community:" + kv.Key,
+            label = analysis.CommunityLabels[kv.Key],
+            group = kv.Key,
+            value = kv.Value.Count,
+            color = palette[kv.Key % palette.Count],
+            shape = "dot",
+            meta = new
+            {
+                type = "community",
+                source = $"{kv.Value.Count} members; top: " + string.Join(", ",
+                    kv.Value.OrderByDescending(graph.Degree).Take(8).Select(id => graph.Nodes[id].Label)),
+                location = (string?)null,
+                community = kv.Key,
+            },
+        });
+
+        var crossings = new Dictionary<(int, int), int>();
+        foreach (var edge in graph.Edges)
+        {
+            int a = graph.Nodes[edge.Source].Community ?? 0, b = graph.Nodes[edge.Target].Community ?? 0;
+            if (a == b)
+                continue;
+            var key = a < b ? (a, b) : (b, a);
+            crossings[key] = crossings.GetValueOrDefault(key) + 1;
+        }
+        var edges = crossings.OrderBy(kv => kv.Key).Select(kv => new
+        {
+            from = "community:" + kv.Key.Item1,
+            to = "community:" + kv.Key.Item2,
+            relation = $"{kv.Value} links",
+            confidence = Confidence.Extracted,
+            dashes = false,
+        });
+        var legend = analysis.Communities.OrderBy(kv => kv.Key).Select(kv => new
+        {
+            id = kv.Key,
+            name = analysis.CommunityLabels[kv.Key],
+            count = kv.Value.Count,
+            color = palette[kv.Key % palette.Count],
+        });
+
+        var data = JsonSerializer.Serialize(new { nodes, edges, legend }).Replace("</", "<\\/");
+        File.WriteAllText(path, Template.Replace("__VIS_JS__", VisJs()).Replace("__DATA__", data));
     }
 
     private static List<string> Palette(int count)

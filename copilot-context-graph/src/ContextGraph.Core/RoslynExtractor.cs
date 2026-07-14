@@ -205,10 +205,21 @@ public sealed class RoslynExtractor
         /// names disambiguate (HubConnection vs IJSRuntime vs IClientProxy).</summary>
         private bool TryStringContractCall(InvocationExpressionSyntax node)
         {
-            if (node.Expression is not MemberAccessExpressionSyntax member ||
-                node.ArgumentList.Arguments.FirstOrDefault()?.Expression is not LiteralExpressionSyntax { Token.Value: string literal })
+            if (node.Expression is not MemberAccessExpressionSyntax member)
                 return false;
             var methodName = member.Name.Identifier.Text;
+            var firstArg = node.ArgumentList.Arguments.FirstOrDefault()?.Expression;
+
+            // Dapper with interpolated SQL ($"… FROM Orders WHERE Id = {id}"): the literal
+            // text chunks still name the tables/procs — mine those.
+            if (firstArg is InterpolatedStringExpressionSyntax interpolated && DapperMethods.Contains(methodName))
+            {
+                var textChunks = string.Join(" ", interpolated.Contents.OfType<InterpolatedStringTextSyntax>().Select(t => t.TextToken.ValueText));
+                ScanSqlLiteral(textChunks, node);
+                return true;
+            }
+            if (firstArg is not LiteralExpressionSyntax { Token.Value: string literal })
+                return false;
             var receiver = _model.GetTypeInfo(member.Expression).Type?.Name ?? "";
 
             switch (methodName)

@@ -60,6 +60,27 @@ public class ClusterAndAnalyzeTests : IClassFixture<BuiltGraphFixture>
     }
 
     [Fact]
+    public void OversizedGraphFallsBackToCommunityMetaGraph()
+    {
+        var communities = Louvain.Cluster(_graph);
+        var labels = Louvain.LabelCommunities(_graph, communities);
+        var analysis = Analyzer.Analyze(_graph, communities, labels);
+        var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ctxgraph-meta-" + Guid.NewGuid().ToString("N") + ".html");
+        try
+        {
+            HtmlExporter.Write(_graph, analysis, path, maxNodes: 5); // force the fallback
+            var html = File.ReadAllText(path);
+            Assert.Contains("community:", html);       // aggregated nodes
+            Assert.Contains(" links", html);           // weighted inter-community edges
+            Assert.DoesNotContain("too large", html);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void HtmlExportIsSelfContained()
     {
         var communities = Louvain.Cluster(_graph);
