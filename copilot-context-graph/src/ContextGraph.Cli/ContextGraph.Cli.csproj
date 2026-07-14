@@ -16,7 +16,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>context-graph</ToolCommandName>
     <PackageId>ContextGraph.Cli</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Description>Knowledge graph CLI for .NET solutions: build, query, path, explain.</Description>
   </PropertyGroup>
 

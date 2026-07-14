@@ -1,16 +1,20 @@
 <!-- Add this to your project's .github/copilot-instructions.md -->
 
-## Codebase knowledge graph
+## Codebase knowledge graph (use as an index, not an answer)
 
-This workspace runs a `context-graph` MCP server that holds an always-fresh knowledge
-graph of the whole solution (types, methods, Blazor components, routes, JS interop).
+This workspace runs a `context-graph` MCP server holding an always-fresh knowledge
+graph of the whole solution (types, methods, Blazor components, routes, events,
+DI bindings, SQL objects, config keys).
 
-For questions about architecture, relationships, call paths, or the impact of a change,
-call the context-graph tools **before** grepping or reading files:
+For questions about architecture, relationships, call paths, or the impact of a
+change, use the graph tools **to find out which files matter — then read those
+files before answering**:
 
-- `query_graph` — plain-language question → relevant subgraph with source locations
-- `shortest_path` — how two things connect, hop by hop
-- `impact_of_change` — what depends on a symbol (check before modifying shared code)
-- `get_node` / `get_neighbors` — one symbol in detail
+1. Call `query_graph` / `shortest_path` / `impact_of_change` / `get_node` first
+   (instead of grepping) to locate the relevant code precisely.
+2. Every result carries `path:line` references. **Open and read them.**
+3. Answer from the code, cite the locations.
 
-Every result carries `path:line` references; open those instead of searching.
+Never answer from graph output alone: the graph shows *structure* (what connects
+to what), not *behavior* — ordering, conditions, and transaction semantics live
+only in the code bodies.

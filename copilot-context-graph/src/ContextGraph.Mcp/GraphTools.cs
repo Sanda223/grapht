@@ -15,7 +15,7 @@ public sealed class GraphTools
     public GraphTools(GraphService service) => _service = service;
 
     [McpServerTool(Name = "query_graph")]
-    [Description("Answer a plain-language question about the codebase by traversing the knowledge graph from the concepts it mentions. Use this before grepping or reading files for architecture/relationship questions.")]
+    [Description("INDEX, not answer: locates the code relevant to a plain-language question by traversing the knowledge graph. Returns the related nodes/edges with file:line references — read those files before answering; the graph shows structure, not behavior.")]
     public string QueryGraph(
         [Description("The question, e.g. \"how does order total get calculated\"")] string question,
         [Description("bfs (broad context, default) or dfs (trace a specific chain)")] string mode = "bfs",
@@ -24,7 +24,7 @@ public sealed class GraphTools
         _service.Current.Engine.Query(question, dfs: mode.Equals("dfs", StringComparison.OrdinalIgnoreCase), depth: Math.Clamp(depth, 1, 6), tokenBudget: tokenBudget);
 
     [McpServerTool(Name = "shortest_path")]
-    [Description("Trace how two concepts (classes, methods, components, routes) connect, hop by hop.")]
+    [Description("Trace how two concepts (classes, methods, components, routes) connect, hop by hop. Use the hops as a reading list: open the file of each node on the path to see how the connection actually behaves.")]
     public string ShortestPath(
         [Description("Start concept, e.g. \"Orders.razor\"")] string source,
         [Description("End concept, e.g. \"Order.Total\"")] string target,
@@ -32,7 +32,7 @@ public sealed class GraphTools
         _service.Current.Engine.Path(source, target, maxHops);
 
     [McpServerTool(Name = "get_node")]
-    [Description("Show one node in detail: source location, type, community, and every connection.")]
+    [Description("Show one node in detail: source location, type, community, and every connection. Follow up by reading the node's source file at the given location.")]
     public string GetNode([Description("Node label or id, e.g. \"OrderService\"")] string label) =>
         _service.Current.Engine.Explain(label);
 
@@ -72,7 +72,7 @@ public sealed class GraphTools
     public string GraphStats() => _service.Current.Engine.Stats();
 
     [McpServerTool(Name = "impact_of_change")]
-    [Description("What depends on this node — everything that could break if it changes, grouped by distance.")]
+    [Description("What depends on this node — everything that could break if it changes, grouped by distance. Read the listed call sites before concluding a change is safe.")]
     public string ImpactOfChange(
         [Description("Node label or id, e.g. \"IRepository\"")] string label,
         [Description("How many dependency hops to follow")] int depth = 2)
