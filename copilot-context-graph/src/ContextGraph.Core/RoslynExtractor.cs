@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -247,8 +248,52 @@ public sealed class RoslynExtractor
                     _extraction.Nodes.Add(new Node { Id = routeId, Label = NormalizeRoute(literal), FileType = "concept", Type = "route" });
                     AddEdge(_scope.Peek(), routeId, Relation.Calls, Confidence.Inferred, Line(node), context: "http");
                     return true;
+
+                // Config reads: config.GetSection("Features") / GetValue<T>("A:B") / GetConnectionString("Default").
+                case "GetSection" or "GetValue" or "GetConnectionString":
+                {
+                    var key = methodName == "GetConnectionString" ? "ConnectionStrings:" + literal : literal;
+                    var confidence = receiver.Contains("Configuration") ? Confidence.Extracted : Confidence.Inferred;
+                    // No node declared: appsettings extraction supplies it, else the edge drops.
+                    AddEdge(_scope.Peek(), "config:" + key, Relation.References, confidence, Line(node), context: "config");
+                    return true;
+                }
+
+                // Dapper: conn.QueryAsync("SELECT … FROM Orders") — mine the SQL literal.
+                case var _ when DapperMethods.Contains(methodName):
+                    ScanSqlLiteral(literal, node);
+                    return true;
             }
             return false;
+        }
+
+        private static readonly HashSet<string> DapperMethods =
+        [
+            "Query", "QueryAsync", "QueryFirst", "QueryFirstAsync", "QueryFirstOrDefault", "QueryFirstOrDefaultAsync",
+            "QuerySingle", "QuerySingleAsync", "QuerySingleOrDefault", "QuerySingleOrDefaultAsync", "QueryMultiple",
+            "QueryMultipleAsync", "Execute", "ExecuteAsync", "ExecuteScalar", "ExecuteScalarAsync",
+        ];
+
+        private static readonly Regex SqlTableRx = new(@"(?:FROM|JOIN|INTO|UPDATE)\s+([\w\.\[\]]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex SqlExecRx = new(@"EXEC(?:UTE)?\s+([\w\.\[\]]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>Edges to table:/proc: nodes declared by .sql migrations; unmatched names
+        /// drop in GraphBuilder (schema not in this repo → honestly not claimed).</summary>
+        private void ScanSqlLiteral(string sql, SyntaxNode node)
+        {
+            foreach (var table in SqlTableRx.Matches(sql).Select(m => m.Groups[1].Value).Distinct())
+                AddEdge(_scope.Peek(), SqlExtractor.SqlObjectId("table", table), Relation.Uses, Confidence.Inferred, Line(node), context: "sql");
+            foreach (var proc in SqlExecRx.Matches(sql).Select(m => m.Groups[1].Value).Distinct())
+                AddEdge(_scope.Peek(), SqlExtractor.SqlObjectId("proc", proc), Relation.Calls, Confidence.Inferred, Line(node), context: "sql");
+        }
+
+        /// <summary>Config indexer reads: config["Features:EnableX"].</summary>
+        public override void VisitElementAccessExpression(ElementAccessExpressionSyntax node)
+        {
+            if (node.ArgumentList.Arguments.FirstOrDefault()?.Expression is LiteralExpressionSyntax { Token.Value: string key } &&
+                (_model.GetTypeInfo(node.Expression).Type?.Name ?? "").Contains("Configuration"))
+                AddEdge(_scope.Peek(), "config:" + key, Relation.References, Confidence.Extracted, Line(node), context: "config");
+            base.VisitElementAccessExpression(node);
         }
 
         private static string NormalizeRoute(string path)

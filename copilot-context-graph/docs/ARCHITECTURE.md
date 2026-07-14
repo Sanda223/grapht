@@ -108,6 +108,17 @@ Edges emitted (relation → how):
 | `publishes` / `consumes` | `Publish<T>`/`Send<T>` calls (MassTransit namespace) / `IConsumer<T>` base list | message flow joins publisher and consumer through the contract type |
 | `uses` | `PackageReference` in csproj | project → `pkg:` node; version kept on the edge so drift across projects stays visible. `ProjectReference` → project→project `references` |
 
+Cross-technology seams (Tier 2/3) join both sides at shared concept nodes; string-literal matches are tagged `INFERRED`:
+
+| Seam | Node | Sides |
+|---|---|---|
+| C# ↔ JS | `js:<fn>`, `[JSInvokable]` methods | `InvokeAsync("fn")` stubs merge with function defs scanned from first-party .js; `DotNet.invokeMethodAsync` resolves via `js_invokable` metadata |
+| WASM ↔ API | `route:<path>` | `[Route]`/`[Http*]` attributes (server) and HttpClient verb calls with string literals (client) normalize to one path node |
+| SignalR | `event:<name>`, hub methods | `Clients.SendAsync` publishes / `connection.On` consumes; `HubConnection.InvokeAsync` resolves to methods on `Hub`-derived types (receiver-type disambiguation vs JS interop) |
+| C# ↔ SQL | `table:`/`proc:` | `.sql` `CREATE` statements declare; Dapper-method SQL literals are mined for `FROM/JOIN/INTO/UPDATE/EXEC` (names normalized: last segment, lowercase, unbracketed) |
+| Code ↔ config | `config:<A:B>` | appsettings key tree declares; `config["A:B"]`/`GetSection`/`GetConnectionString` reads reference — unread keys are the dead-setting signal |
+| Infra | `infra:`, `service:`, `script:` | Bicep resources + module imports; docker-compose services + `depends_on`; pipeline YAML → script references |
+
 Rules:
 
 - Only user-declared symbols become nodes. References to BCL/NuGet types are dropped (they're the noise Graphify fights with `_BUILTIN_NOISE_LABELS`; we cut them at the source by checking `symbol.Locations.Any(l => l.IsInSource)`).
