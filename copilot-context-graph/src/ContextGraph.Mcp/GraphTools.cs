@@ -79,7 +79,10 @@ public sealed class GraphTools
     {
         var snapshot = _service.Current;
         var graph = snapshot.Graph;
-        var resolved = snapshot.Engine.ResolveNode(label);
+        var candidates = snapshot.Engine.ResolveNodeCandidates(label);
+        if (candidates.Count > 1)
+            return snapshot.Engine.DescribeAmbiguity(label, candidates);
+        var resolved = candidates.FirstOrDefault();
         if (resolved is null)
             return $"No node matching \"{label}\"";
 

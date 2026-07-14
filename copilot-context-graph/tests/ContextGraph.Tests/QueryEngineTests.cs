@@ -64,6 +64,24 @@ public class QueryEngineTests : IClassFixture<BuiltGraphFixture>
     }
 
     [Fact]
+    public void AmbiguousMethodNameReturnsCandidatesInsteadOfGuessing()
+    {
+        // Find() exists on both IRepository<T> and OrderRepository.
+        var answer = _engine.Explain("Find");
+        Assert.Contains("matches 2 distinct nodes", answer);
+        Assert.Contains("SampleApp.Domain.IRepository<T>.Find", answer);
+        Assert.Contains("SampleApp.Domain.OrderRepository.Find", answer);
+        // Requerying with the unique id resolves normally.
+        Assert.Contains("Degree:", _engine.Explain("SampleApp.Domain.OrderRepository.Find"));
+    }
+
+    [Fact]
+    public void ClassDoesNotCollideWithItsOwnConstructor()
+    {
+        Assert.Contains("ID:        SampleApp.Services.OrderService", _engine.Explain("OrderService"));
+    }
+
+    [Fact]
     public void StatsReportsCountsAndConfidence()
     {
         var stats = _engine.Stats();

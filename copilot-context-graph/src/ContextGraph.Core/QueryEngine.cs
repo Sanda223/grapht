@@ -57,8 +57,14 @@ public sealed partial class QueryEngine
 
     public string Path(string source, string target, int maxHops = 8)
     {
-        var sourceNode = BestMatch(source);
-        var targetNode = BestMatch(target);
+        var sourceCandidates = ResolveNodeCandidates(source);
+        if (sourceCandidates.Count > 1)
+            return DescribeAmbiguity(source, sourceCandidates);
+        var targetCandidates = ResolveNodeCandidates(target);
+        if (targetCandidates.Count > 1)
+            return DescribeAmbiguity(target, targetCandidates);
+        var sourceNode = sourceCandidates.FirstOrDefault();
+        var targetNode = targetCandidates.FirstOrDefault();
         if (sourceNode is null)
             return $"No node matching \"{source}\"";
         if (targetNode is null)
@@ -86,7 +92,10 @@ public sealed partial class QueryEngine
 
     public string Explain(string label, int maxConnections = 20)
     {
-        var id = BestMatch(label);
+        var candidates = ResolveNodeCandidates(label);
+        if (candidates.Count > 1)
+            return DescribeAmbiguity(label, candidates);
+        var id = candidates.FirstOrDefault();
         if (id is null)
             return $"No node matching \"{label}\"";
         var node = _graph.Nodes[id];
@@ -222,6 +231,44 @@ public sealed partial class QueryEngine
     /// <summary>Resolve a user-supplied name to a node id (or null). Precedence:
     /// source-file exact → label/id exact → prefix → substring; ties by degree.</summary>
     public string? ResolveNode(string query) => BestMatch(query);
+
+    /// <summary>Like ResolveNode, but when the name is genuinely ambiguous (multiple
+    /// exact label/id matches — e.g. five DeleteBasketAsync methods) returns all of
+    /// them so tools can ask instead of silently guessing. Fuzzy (prefix/substring)
+    /// matches still return the single best.</summary>
+    public IReadOnlyList<string> ResolveNodeCandidates(string query)
+    {
+        var q = query.ToLowerInvariant();
+        var exact = ExactMatches(n => n.Label.Equals(q, StringComparison.OrdinalIgnoreCase) ||
+                                      n.Id.Equals(q, StringComparison.OrdinalIgnoreCase));
+        // Method labels carry a () suffix; only fall to that tier when the plain tier is
+        // empty, so a class never collides with its own constructor.
+        if (exact.Count == 0)
+            exact = ExactMatches(n => n.Label.Equals(q + "()", StringComparison.OrdinalIgnoreCase));
+        if (exact.Count > 1)
+            return exact;
+        return BestMatch(query) is { } single ? [single] : [];
+
+        List<string> ExactMatches(Func<Node, bool> predicate) =>
+            _graph.Nodes.Values.Where(predicate)
+                .OrderByDescending(n => _graph.Degree(n.Id))
+                .ThenBy(n => n.Id, StringComparer.Ordinal)
+                .Select(n => n.Id)
+                .ToList();
+    }
+
+    /// <summary>Disambiguation text for an ambiguous name — candidates with enough
+    /// identity (id, type, location) that the caller can requery with a unique one.</summary>
+    public string DescribeAmbiguity(string query, IReadOnlyList<string> candidates)
+    {
+        var sb = new StringBuilder($"\"{query}\" matches {candidates.Count} distinct nodes — requery with one of these ids:\n");
+        foreach (var id in candidates.Take(10))
+        {
+            var node = _graph.Nodes[id];
+            sb.AppendLine($"  {id} [{node.Type ?? node.FileType}] ({node.SourceFile} {node.SourceLocation})".TrimEnd());
+        }
+        return sb.ToString().TrimEnd();
+    }
 
     private string? BestMatch(string query)
     {

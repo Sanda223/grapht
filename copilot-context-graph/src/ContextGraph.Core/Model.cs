@@ -25,6 +25,7 @@ public static class Relation
     public const string Inherits = "inherits";
     public const string Implements = "implements";
     public const string References = "references";
+    public const string Overrides = "overrides"; // method → overridden base method
     public const string Uses = "uses";           // project → NuGet package
     public const string BoundTo = "bound_to";    // DI: service interface → registered implementation
     public const string Publishes = "publishes"; // message flow: publisher → message contract

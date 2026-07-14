@@ -135,6 +135,7 @@ public sealed class RoslynExtractor
             var id = SymbolId(symbol);
             AddNode(id, symbol.Name + "()", "method", Line(node), JsInvokableMetadata(node, symbol.Name));
             AddEdge(_scope.Peek(), id, Relation.Contains, Confidence.Extracted, Line(node));
+            AddMethodLinkage(id, symbol, node);
             AddHttpRoute(id, node);
             AddTypeReference(id, symbol.ReturnType, "return_type", Line(node));
             foreach (var parameter in symbol.Parameters)
@@ -459,6 +460,34 @@ public sealed class RoslynExtractor
                 SourceFile = _relPath,
                 SourceLocation = location,
             });
+
+        /// <summary>Method-level linkage that type-level implements/inherits edges miss:
+        /// without these, impact analysis on an interface method never finds its
+        /// implementations (the round-3 eShop failure).</summary>
+        private void AddMethodLinkage(string id, IMethodSymbol symbol, MethodDeclarationSyntax node)
+        {
+            if (symbol.OverriddenMethod is { } overridden && IsInSource(overridden))
+            {
+                var target = overridden.OriginalDefinition;
+                AddNode(SymbolId(target), target.Name + "()", "method", null, null);
+                AddEdge(id, SymbolId(target), Relation.Overrides, Confidence.Extracted, Line(node));
+            }
+
+            foreach (var iface in symbol.ContainingType.AllInterfaces)
+            {
+                if (!IsInSource(iface))
+                    continue;
+                foreach (var member in iface.GetMembers().OfType<IMethodSymbol>())
+                {
+                    if (!SymbolEqualityComparer.Default.Equals(
+                            symbol.ContainingType.FindImplementationForInterfaceMember(member), symbol))
+                        continue;
+                    var target = member.OriginalDefinition;
+                    AddNode(SymbolId(target), target.Name + "()", "method", null, null);
+                    AddEdge(id, SymbolId(target), Relation.Implements, Confidence.Extracted, Line(node));
+                }
+            }
+        }
 
         private string? _routePrefix;
         private string? _controllerName;
