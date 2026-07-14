@@ -98,7 +98,8 @@ public sealed partial class RazorExtractor
                 invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression is LiteralExpressionSyntax { Token.Value: string jsName })
             {
                 var jsId = "js:" + jsName;
-                extraction.Nodes.Add(new Node { Id = jsId, Label = jsName, FileType = "concept", Type = "js_function", SourceFile = relPath });
+                // No SourceFile: stub — the defining .js file supplies the location on merge.
+                extraction.Nodes.Add(new Node { Id = jsId, Label = jsName, FileType = "concept", Type = "js_function" });
                 extraction.Edges.Add(new Edge
                 {
                     Source = relPath, Target = jsId, Relation = Relation.Calls, Context = "call",

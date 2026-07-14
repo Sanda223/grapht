@@ -6,6 +6,7 @@ namespace ContextGraph.Core;
 public sealed record LoadedSolution(
     Solution Solution,
     IReadOnlyList<string> RazorFiles,
+    IReadOnlyList<string> ExtraFiles,
     IReadOnlyList<string> Diagnostics,
     string RootDir)
 {
@@ -31,7 +32,8 @@ public static class SolutionLoader
             ? (await workspace.OpenProjectAsync(target, cancellationToken: ct)).Solution
             : await workspace.OpenSolutionAsync(target, cancellationToken: ct);
 
-        return new LoadedSolution(solution, FindRazorFiles(rootDir), diagnostics, rootDir);
+        var (razorFiles, extraFiles) = FindFiles(rootDir);
+        return new LoadedSolution(solution, razorFiles, extraFiles, diagnostics, rootDir);
     }
 
     private static string ResolveTarget(string path)
@@ -49,22 +51,40 @@ public static class SolutionLoader
             ?? throw new FileNotFoundException($"No .sln, .slnx, or .csproj found in {path}");
     }
 
-    private static List<string> FindRazorFiles(string rootDir)
+    /// <summary>Razor files plus the "extra" corpus the non-Roslyn extractors handle:
+    /// JS (own code only, not vendored bundles), SQL, Bicep, appsettings, compose/pipeline YAML.</summary>
+    private static (List<string> Razor, List<string> Extra) FindFiles(string rootDir)
     {
-        var results = new List<string>();
+        var razor = new List<string>();
+        var extra = new List<string>();
         Walk(new DirectoryInfo(rootDir));
-        results.Sort(StringComparer.Ordinal);
-        return results;
+        razor.Sort(StringComparer.Ordinal);
+        extra.Sort(StringComparer.Ordinal);
+        return (razor, extra);
 
         void Walk(DirectoryInfo dir)
         {
             if (SkipDirs.Contains(dir.Name, StringComparer.OrdinalIgnoreCase))
                 return;
             foreach (var file in dir.EnumerateFiles())
+            {
                 if (file.Extension is ".razor" or ".cshtml")
-                    results.Add(file.FullName);
+                    razor.Add(file.FullName);
+                else if (IsExtraFile(file.Name))
+                    extra.Add(file.FullName);
+            }
             foreach (var sub in dir.EnumerateDirectories())
                 Walk(sub);
         }
     }
+
+    private static bool IsExtraFile(string name) =>
+        Path.GetExtension(name).ToLowerInvariant() switch
+        {
+            ".js" => !name.EndsWith(".min.js", StringComparison.OrdinalIgnoreCase),
+            ".sql" or ".bicep" => true,
+            ".json" => name.StartsWith("appsettings", StringComparison.OrdinalIgnoreCase),
+            ".yml" or ".yaml" => true, // dispatcher sniffs compose vs pipeline vs other
+            _ => false,
+        };
 }

@@ -12,9 +12,12 @@ public static class RazorResolver
     {
         var byLabel = new Dictionary<string, List<Node>>();
         var componentByStem = new Dictionary<string, string>();
+        var jsInvokableById = new Dictionary<string, string>();
+        var hubTypeIds = new HashSet<string>();
         var nodeIds = new HashSet<string>();
 
-        foreach (var node in extractions.SelectMany(e => e.Nodes))
+        var allNodes = extractions.SelectMany(e => e.Nodes).ToList();
+        foreach (var node in allNodes)
         {
             nodeIds.Add(node.Id);
             if (!byLabel.TryGetValue(node.Label, out var list))
@@ -22,7 +25,18 @@ public static class RazorResolver
             list.Add(node);
             if (node.Type == "component")
                 componentByStem[Path.GetFileNameWithoutExtension(node.Label)] = node.Id;
+            if (node.Metadata?.TryGetValue("js_invokable", out var invokableId) == true)
+                jsInvokableById[invokableId] = node.Id;
+            if (node.Metadata?.ContainsKey("hub") == true)
+                hubTypeIds.Add(node.Id);
         }
+
+        // SignalR: hub method name → method node on a Hub-derived type.
+        var hubMethodByName = allNodes
+            .Where(n => n.Type == "method")
+            .Where(n => n.Id.LastIndexOf('.') is var dot && dot > 0 && hubTypeIds.Contains(n.Id[..dot]))
+            .GroupBy(n => n.Id[(n.Id.LastIndexOf('.') + 1)..])
+            .ToDictionary(g => g.Key, g => g.OrderBy(n => n.Id, StringComparer.Ordinal).First().Id);
 
         foreach (var extraction in extractions)
         {
@@ -57,6 +71,19 @@ public static class RazorResolver
                     1 => (candidates[0].Id, confidence),
                     _ => (candidates[0].Id, Confidence.Ambiguous),
                 };
+            }
+            if (target.StartsWith("hubmethod:"))
+            {
+                return hubMethodByName.TryGetValue(target["hubmethod:".Length..], out var hubMethod)
+                    ? (hubMethod, confidence)
+                    : (target, confidence);
+            }
+            if (target.StartsWith("dotnet:"))
+            {
+                // JS → .NET: DotNet.invokeMethodAsync identifier → [JSInvokable] method.
+                return jsInvokableById.TryGetValue(target["dotnet:".Length..], out var methodId)
+                    ? (methodId, confidence)
+                    : (target, confidence);
             }
             if (target.StartsWith("member:"))
             {
