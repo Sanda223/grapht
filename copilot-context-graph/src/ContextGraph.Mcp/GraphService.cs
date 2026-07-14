@@ -73,6 +73,9 @@ public sealed class GraphService : IDisposable
                 }
             foreach (var razorFile in _loaded.RazorFiles.Where(File.Exists))
                 extractions.Add(razorExtractor.Extract(razorFile));
+            foreach (var extraFile in _loaded.ExtraFiles.Where(File.Exists))
+                if (ExtraFileExtractor.Extract(extraFile, _loaded.RootDir) is { } extraction)
+                    extractions.Add(extraction);
             extractions.AddRange(CsprojExtractor.ExtractAll(_loaded));
 
             RazorResolver.Resolve(extractions);

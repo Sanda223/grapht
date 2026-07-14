@@ -78,7 +78,14 @@ public sealed class RoslynExtractor
             if (_model.GetDeclaredSymbol(node) is not INamedTypeSymbol symbol)
                 return;
             var id = SymbolId(symbol);
-            AddNode(id, symbol.Name, kind, Line(node), new() { ["namespace"] = symbol.ContainingNamespace.ToDisplayString() });
+
+            var metadata = new Dictionary<string, string> { ["namespace"] = symbol.ContainingNamespace.ToDisplayString() };
+            // SignalR hub (base-list name check — the Hub base class is framework code).
+            if (node is TypeDeclarationSyntax { BaseList: { } bases } &&
+                bases.Types.Any(b => b.Type.ToString() is var s && (s == "Hub" || s.StartsWith("Hub<"))))
+                metadata["hub"] = "true";
+
+            AddNode(id, symbol.Name, kind, Line(node), metadata);
             AddNamespace(symbol.ContainingNamespace, id);
             AddEdge(_fileId, id, Relation.Contains, Confidence.Extracted, Line(node));
 
@@ -105,9 +112,17 @@ public sealed class RoslynExtractor
                 }
             }
 
+            var savedPrefix = _routePrefix;
+            var savedController = _controllerName;
+            _routePrefix = AttributeStringArg(node.AttributeLists, "Route");
+            _controllerName = symbol.Name.EndsWith("Controller") ? symbol.Name[..^"Controller".Length] : symbol.Name;
+
             _scope.Push(id);
             visitChildren();
             _scope.Pop();
+
+            _routePrefix = savedPrefix;
+            _controllerName = savedController;
         }
 
         // --- members ---
@@ -117,8 +132,9 @@ public sealed class RoslynExtractor
             if (_model.GetDeclaredSymbol(node) is not IMethodSymbol symbol)
                 return;
             var id = SymbolId(symbol);
-            AddNode(id, symbol.Name + "()", "method", Line(node), null);
+            AddNode(id, symbol.Name + "()", "method", Line(node), JsInvokableMetadata(node, symbol.Name));
             AddEdge(_scope.Peek(), id, Relation.Contains, Confidence.Extracted, Line(node));
+            AddHttpRoute(id, node);
             AddTypeReference(id, symbol.ReturnType, "return_type", Line(node));
             foreach (var parameter in symbol.Parameters)
                 AddTypeReference(id, parameter.Type, "parameter_type", Line(node));
@@ -171,20 +187,74 @@ public sealed class RoslynExtractor
 
         public override void VisitInvocationExpression(InvocationExpressionSyntax node)
         {
-            // JS interop: JS.InvokeVoidAsync("fn", ...) — the C#→JavaScript boundary,
-            // captured without parsing any JS.
-            if (node.Expression is MemberAccessExpressionSyntax { Name.Identifier.Text: "InvokeAsync" or "InvokeVoidAsync" } &&
-                node.ArgumentList.Arguments.FirstOrDefault()?.Expression is LiteralExpressionSyntax { Token.Value: string jsName })
-            {
-                var jsId = "js:" + jsName;
-                _extraction.Nodes.Add(new Node { Id = jsId, Label = jsName, FileType = "concept", Type = "js_function", SourceFile = _relPath });
-                AddEdge(_scope.Peek(), jsId, Relation.Calls, Confidence.Inferred, Line(node), context: "call");
-            }
-            else if (!TryFrameworkCall(node))
-            {
+            if (!TryStringContractCall(node) && !TryFrameworkCall(node))
                 AddCall(_model.GetSymbolInfo(node), node);
-            }
             base.VisitInvocationExpression(node);
+        }
+
+        private static readonly HashSet<string> HttpClientMethods =
+        [
+            "GetAsync", "PostAsync", "PutAsync", "DeleteAsync", "PatchAsync", "GetStringAsync",
+            "GetFromJsonAsync", "PostAsJsonAsync", "PutAsJsonAsync", "DeleteFromJsonAsync",
+        ];
+
+        /// <summary>Calls whose first string-literal argument is a cross-boundary contract:
+        /// JS interop, SignalR hub methods and events, HTTP client requests. Receiver type
+        /// names disambiguate (HubConnection vs IJSRuntime vs IClientProxy).</summary>
+        private bool TryStringContractCall(InvocationExpressionSyntax node)
+        {
+            if (node.Expression is not MemberAccessExpressionSyntax member ||
+                node.ArgumentList.Arguments.FirstOrDefault()?.Expression is not LiteralExpressionSyntax { Token.Value: string literal })
+                return false;
+            var methodName = member.Name.Identifier.Text;
+            var receiver = _model.GetTypeInfo(member.Expression).Type?.Name ?? "";
+
+            switch (methodName)
+            {
+                // Client → hub: connection.InvokeAsync("HubMethod") / SendAsync("HubMethod").
+                case "InvokeAsync" or "SendAsync" when receiver == "HubConnection":
+                    // Placeholder; resolved against methods on Hub-derived types, else dropped.
+                    AddEdge(_scope.Peek(), "hubmethod:" + literal, Relation.Calls, Confidence.Extracted, Line(node), context: "call");
+                    return true;
+
+                // C# → JS: JS.InvokeVoidAsync("fn", …).
+                case "InvokeAsync" or "InvokeVoidAsync":
+                    // No SourceFile: stub — the defining .js file supplies the location on merge.
+                    _extraction.Nodes.Add(new Node { Id = "js:" + literal, Label = literal, FileType = "concept", Type = "js_function" });
+                    AddEdge(_scope.Peek(), "js:" + literal, Relation.Calls, Confidence.Inferred, Line(node), context: "call");
+                    return true;
+
+                // Server → clients: Clients.All.SendAsync("Event", …).
+                case "SendAsync":
+                {
+                    var confidence = receiver.StartsWith("IClientProxy") || receiver.StartsWith("IHub") || receiver.StartsWith("ISingleClient")
+                        ? Confidence.Extracted : Confidence.Inferred;
+                    _extraction.Nodes.Add(new Node { Id = "event:" + literal, Label = literal, FileType = "concept", Type = "signalr_event" });
+                    AddEdge(_scope.Peek(), "event:" + literal, Relation.Publishes, confidence, Line(node));
+                    return true;
+                }
+
+                // Client handler: connection.On("Event", handler).
+                case "On" when receiver is "HubConnection" or "" && node.ArgumentList.Arguments.Count >= 2:
+                    _extraction.Nodes.Add(new Node { Id = "event:" + literal, Label = literal, FileType = "concept", Type = "signalr_event" });
+                    AddEdge(_scope.Peek(), "event:" + literal, Relation.Consumes,
+                        receiver == "HubConnection" ? Confidence.Extracted : Confidence.Inferred, Line(node));
+                    return true;
+
+                // HTTP client: http.GetAsync("api/orders/…").
+                case var _ when HttpClientMethods.Contains(methodName):
+                    var routeId = "route:" + NormalizeRoute(literal);
+                    _extraction.Nodes.Add(new Node { Id = routeId, Label = NormalizeRoute(literal), FileType = "concept", Type = "route" });
+                    AddEdge(_scope.Peek(), routeId, Relation.Calls, Confidence.Inferred, Line(node), context: "http");
+                    return true;
+            }
+            return false;
+        }
+
+        private static string NormalizeRoute(string path)
+        {
+            var trimmed = path.Split('?')[0].Trim('/');
+            return "/" + trimmed.ToLowerInvariant();
         }
 
         private static readonly HashSet<string> DiMethods =
@@ -344,6 +414,68 @@ public sealed class RoslynExtractor
                 SourceFile = _relPath,
                 SourceLocation = location,
             });
+
+        private string? _routePrefix;
+        private string? _controllerName;
+
+        private static readonly string[] HttpVerbAttributes =
+            ["HttpGet", "HttpPost", "HttpPut", "HttpDelete", "HttpPatch", "HttpHead", "HttpOptions"];
+
+        /// <summary>[HttpGet("{id}")] on a method (plus the type's [Route] prefix) → a
+        /// route: node shared with client-side HTTP calls. Attribute names are checked
+        /// syntactically — the attribute types are framework code.</summary>
+        private void AddHttpRoute(string methodId, MethodDeclarationSyntax node)
+        {
+            foreach (var verb in HttpVerbAttributes)
+            {
+                if (!HasAttribute(node.AttributeLists, verb))
+                    continue;
+                var template = AttributeStringArg(node.AttributeLists, verb);
+                var prefix = (_routePrefix ?? "").Replace("[controller]", _controllerName ?? "");
+                var segments = new[] { prefix, template }.Where(s => !string.IsNullOrEmpty(s)).Select(s => s!.Trim('/'));
+                var path = NormalizeRoute(string.Join('/', segments));
+                _extraction.Nodes.Add(new Node
+                {
+                    Id = "route:" + path,
+                    Label = path,
+                    FileType = "concept",
+                    Type = "route",
+                    SourceFile = _relPath,
+                    SourceLocation = Line(node),
+                    Metadata = new() { ["verb"] = verb["Http".Length..].ToUpperInvariant() },
+                });
+                AddEdge(methodId, "route:" + path, Relation.References, Confidence.Extracted, Line(node), context: "http_route");
+                return; // one route per method is the norm; first verb wins
+            }
+        }
+
+        private static bool HasAttribute(SyntaxList<AttributeListSyntax> lists, string name) =>
+            lists.SelectMany(l => l.Attributes).Any(a => a.Name.ToString() is var n && (n == name || n == name + "Attribute"));
+
+        private static string? AttributeStringArg(SyntaxList<AttributeListSyntax> lists, string name)
+        {
+            var attribute = lists.SelectMany(l => l.Attributes)
+                .FirstOrDefault(a => a.Name.ToString() is var n && (n == name || n == name + "Attribute"));
+            return attribute?.ArgumentList?.Arguments.FirstOrDefault()?.Expression
+                is LiteralExpressionSyntax { Token.Value: string value } ? value : null;
+        }
+
+        /// <summary>[JSInvokable] / [JSInvokable("Id")] — name-based (the attribute type is
+        /// framework, so it never resolves in-source). The identifier lets JS-side
+        /// DotNet.invokeMethodAsync calls resolve to this method.</summary>
+        private static Dictionary<string, string>? JsInvokableMetadata(MethodDeclarationSyntax node, string methodName)
+        {
+            foreach (var attribute in node.AttributeLists.SelectMany(l => l.Attributes))
+            {
+                var name = attribute.Name.ToString();
+                if (name is not ("JSInvokable" or "JSInvokableAttribute"))
+                    continue;
+                var identifier = attribute.ArgumentList?.Arguments.FirstOrDefault()?.Expression
+                    is LiteralExpressionSyntax { Token.Value: string custom } ? custom : methodName;
+                return new() { ["js_invokable"] = identifier };
+            }
+            return null;
+        }
 
         private string Line(SyntaxNode node) => "L" + (node.GetLocation().GetLineSpan().StartLinePosition.Line + 1);
 
