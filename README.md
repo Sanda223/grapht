@@ -8,7 +8,7 @@ Inspired by [Graphify](https://github.com/Graphify-Labs/graphify) (MIT, © Safi 
 
 ## Quick start
 
-Full fresh-machine instructions (prerequisites, PATH setup, macOS/Windows notes, troubleshooting): see the **[Full setup guide](#full-setup-guide-fresh-machine)** at the bottom of this file.
+Full fresh-machine instructions (prerequisites, PATH setup, macOS/Windows/Linux notes, troubleshooting): see the **[Full setup guide](#full-setup-guide-fresh-machine)** at the bottom of this file.
 
 ```bash
 # from the repo root
@@ -75,7 +75,7 @@ Requires the .NET 10 SDK. Analyzed projects can be anything Roslyn loads — SDK
 
 # Full setup guide (fresh machine)
 
-Everything below assumes a machine that has never seen this tool. Commands are identical on macOS and Windows unless a platform note says otherwise (macOS: Terminal/zsh; Windows: PowerShell).
+Everything below assumes a machine that has never seen this tool. Commands are identical on macOS, Windows, and Linux unless a platform note says otherwise (macOS: Terminal/zsh; Windows: PowerShell; Linux: bash).
 
 ## 1. Prerequisites
 
@@ -85,8 +85,8 @@ Everything below assumes a machine that has never seen this tool. Commands are i
 | **Git** | clone this repo | `git --version` |
 | **VS Code + GitHub Copilot extension** | only needed for the MCP/Copilot integration — the CLI works without it | Copilot Chat opens in VS Code |
 
-- .NET 10 SDK: <https://dotnet.microsoft.com/download/dotnet/10.0> (macOS: pkg installer; Windows: exe installer, or `winget install Microsoft.DotNet.SDK.10`).
-- **Windows only, optional:** to analyze legacy .NET *Framework* (non-SDK-style) projects with full symbol resolution, have Visual Studio or [VS Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) installed. Without them, legacy projects still load but degrade to `AMBIGUOUS`-tagged extraction (the report tells you when this happens). Modern SDK-style projects need nothing extra on either OS.
+- .NET 10 SDK: <https://dotnet.microsoft.com/download/dotnet/10.0> (macOS: pkg installer; Windows: exe installer, or `winget install Microsoft.DotNet.SDK.10`; Linux: distro package, e.g. Ubuntu `sudo apt-get install -y dotnet-sdk-10.0`, or the [dotnet-install script](https://learn.microsoft.com/dotnet/core/install/linux) for any distro).
+- **Windows only, optional:** to analyze legacy .NET *Framework* (non-SDK-style) projects with full symbol resolution, have Visual Studio or [VS Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) installed. Without them, legacy projects still load but degrade to `AMBIGUOUS`-tagged extraction (the report tells you when this happens). Modern SDK-style projects need nothing extra on any OS. (On macOS and Linux there is no Build Tools option — legacy Framework projects always take the degraded path there.)
 
 ## 2. Get the code and build the packages
 
@@ -113,7 +113,7 @@ This installs two commands machine-wide (it does not matter what folder you run 
 
 ## 4. Make sure the tools are on PATH
 
-Global dotnet tools live in `~/.dotnet/tools` (macOS) / `%USERPROFILE%\.dotnet\tools` (Windows).
+Global dotnet tools live in `~/.dotnet/tools` (macOS/Linux) / `%USERPROFILE%\.dotnet\tools` (Windows).
 
 - **Windows:** the .NET installer adds this to PATH automatically. Open a *new* terminal and run `context-graph --help`. If it's not found: `setx PATH "%PATH%;%USERPROFILE%\.dotnet\tools"` and open a new terminal.
 - **macOS:** the installer's PATH entry is broken on some setups (it writes a literal unexpanded `~` into `/etc/paths.d/dotnet-cli-tools`). Fix it once:
@@ -122,6 +122,13 @@ Global dotnet tools live in `~/.dotnet/tools` (macOS) / `%USERPROFILE%\.dotnet\t
   cat << \EOF >> ~/.zprofile
   export PATH="$PATH:$HOME/.dotnet/tools"
   EOF
+  export PATH="$PATH:$HOME/.dotnet/tools"   # current session too
+  ```
+
+- **Linux:** package-manager installs usually do not touch PATH. Add it once (use `~/.zshrc` if you run zsh):
+
+  ```bash
+  echo 'export PATH="$PATH:$HOME/.dotnet/tools"' >> ~/.bashrc
   export PATH="$PATH:$HOME/.dotnet/tools"   # current session too
   ```
 
