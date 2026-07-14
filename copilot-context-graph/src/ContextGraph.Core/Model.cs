@@ -25,6 +25,10 @@ public static class Relation
     public const string Inherits = "inherits";
     public const string Implements = "implements";
     public const string References = "references";
+    public const string Uses = "uses";           // project → NuGet package
+    public const string BoundTo = "bound_to";    // DI: service interface → registered implementation
+    public const string Publishes = "publishes"; // message flow: publisher → message contract
+    public const string Consumes = "consumes";   // message flow: consumer → message contract
 }
 
 public sealed class Node
@@ -49,6 +53,7 @@ public sealed class Edge
     [JsonPropertyName("weight")] public double Weight { get; set; } = 1.0;
     [JsonPropertyName("source_file")] public string? SourceFile { get; init; }
     [JsonPropertyName("source_location")] public string? SourceLocation { get; init; }
+    [JsonPropertyName("metadata")] public Dictionary<string, string>? Metadata { get; init; }
 }
 
 /// <summary>Nodes and edges pulled from one file; input to GraphBuilder.</summary>

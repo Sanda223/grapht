@@ -30,6 +30,7 @@ public static class GraphPipeline
                 extractions.Add(await extractor.ExtractAsync(document, ct));
         foreach (var razorFile in loaded.RazorFiles)
             extractions.Add(razorExtractor.Extract(razorFile));
+        extractions.AddRange(CsprojExtractor.ExtractAll(loaded));
 
         RazorResolver.Resolve(extractions);
         return GraphBuilder.Build(extractions);

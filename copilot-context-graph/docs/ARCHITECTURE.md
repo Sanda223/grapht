@@ -104,6 +104,9 @@ Edges emitted (relation → how):
 | `calls` | `InvocationExpressionSyntax`, `ObjectCreationExpressionSyntax` | `SemanticModel.GetSymbolInfo` → exact target = EXTRACTED; `CandidateSymbols` = AMBIGUOUS |
 | `inherits` / `implements` | base list | `GetTypeInfo` on each base — Roslyn tells us class vs interface directly (no name-convention guessing) |
 | `references` | field/property/parameter/return/generic-arg/attribute types | `GetTypeInfo`, `context` set accordingly |
+| `bound_to` | `AddScoped/AddSingleton/AddTransient/TryAdd*<TService, TImpl>()` | name-based, both type args in source — what the DI container actually injects |
+| `publishes` / `consumes` | `Publish<T>`/`Send<T>` calls (MassTransit namespace) / `IConsumer<T>` base list | message flow joins publisher and consumer through the contract type |
+| `uses` | `PackageReference` in csproj | project → `pkg:` node; version kept on the edge so drift across projects stays visible. `ProjectReference` → project→project `references` |
 
 Rules:
 

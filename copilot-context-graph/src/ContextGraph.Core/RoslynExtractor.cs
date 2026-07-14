@@ -86,7 +86,18 @@ public sealed class RoslynExtractor
             {
                 foreach (var baseType in node.BaseList.Types)
                 {
-                    if (Resolve(_model.GetTypeInfo(baseType.Type).Type) is not { } target)
+                    var baseSymbol = _model.GetTypeInfo(baseType.Type).Type;
+
+                    // MassTransit consumer: class X : IConsumer<TMessage> → X consumes TMessage.
+                    if (baseSymbol is INamedTypeSymbol { Name: "IConsumer", TypeArguments.Length: 1 } consumer &&
+                        consumer.ContainingNamespace.ToDisplayString() == "MassTransit" &&
+                        Resolve(consumer.TypeArguments[0]) is { } message)
+                    {
+                        AddNode(message.Id, message.Symbol.Name, TypeKindName(message.Symbol), null, null);
+                        AddEdge(id, message.Id, Relation.Consumes, Confidence.Extracted, Line(baseType));
+                    }
+
+                    if (Resolve(baseSymbol) is not { } target)
                         continue;
                     var relation = target.Symbol.TypeKind == TypeKind.Interface ? Relation.Implements : Relation.Inherits;
                     AddNode(target.Id, target.Symbol.Name, TypeKindName(target.Symbol), null, null);
@@ -169,11 +180,50 @@ public sealed class RoslynExtractor
                 _extraction.Nodes.Add(new Node { Id = jsId, Label = jsName, FileType = "concept", Type = "js_function", SourceFile = _relPath });
                 AddEdge(_scope.Peek(), jsId, Relation.Calls, Confidence.Inferred, Line(node), context: "call");
             }
-            else
+            else if (!TryFrameworkCall(node))
             {
                 AddCall(_model.GetSymbolInfo(node), node);
             }
             base.VisitInvocationExpression(node);
+        }
+
+        private static readonly HashSet<string> DiMethods =
+            ["AddScoped", "AddSingleton", "AddTransient", "TryAddScoped", "TryAddSingleton", "TryAddTransient"];
+
+        /// <summary>DI registrations and MassTransit publishes — calls into framework methods
+        /// (normally dropped as not-in-source) whose type arguments encode real architecture.</summary>
+        private bool TryFrameworkCall(InvocationExpressionSyntax node)
+        {
+            if (_model.GetSymbolInfo(node).Symbol is not IMethodSymbol method)
+                return false;
+
+            // services.AddScoped<IService, Implementation>() → IService bound_to Implementation.
+            if (DiMethods.Contains(method.Name) && method.TypeArguments.Length == 2 &&
+                Resolve(method.TypeArguments[0]) is { } service && Resolve(method.TypeArguments[1]) is { } implementation)
+            {
+                AddNode(service.Id, service.Symbol.Name, TypeKindName(service.Symbol), null, null);
+                AddNode(implementation.Id, implementation.Symbol.Name, TypeKindName(implementation.Symbol), null, null);
+                AddEdge(service.Id, implementation.Id, Relation.BoundTo, Confidence.Extracted, Line(node));
+                return true;
+            }
+
+            // bus.Publish<TMessage>(…) / Publish(new TMessage()) → publisher publishes TMessage.
+            if (method.Name is "Publish" or "Send" &&
+                method.ContainingNamespace.ToDisplayString() == "MassTransit")
+            {
+                var messageType = method.TypeArguments.Length == 1
+                    ? method.TypeArguments[0]
+                    : node.ArgumentList.Arguments.Count > 0
+                        ? _model.GetTypeInfo(node.ArgumentList.Arguments[0].Expression).Type
+                        : null;
+                if (Resolve(messageType) is { } message)
+                {
+                    AddNode(message.Id, message.Symbol.Name, TypeKindName(message.Symbol), null, null);
+                    AddEdge(_scope.Peek(), message.Id, Relation.Publishes, Confidence.Extracted, Line(node));
+                    return true;
+                }
+            }
+            return false;
         }
 
         public override void VisitObjectCreationExpression(ObjectCreationExpressionSyntax node)

@@ -73,6 +73,7 @@ public sealed class GraphService : IDisposable
                 }
             foreach (var razorFile in _loaded.RazorFiles.Where(File.Exists))
                 extractions.Add(razorExtractor.Extract(razorFile));
+            extractions.AddRange(CsprojExtractor.ExtractAll(_loaded));
 
             RazorResolver.Resolve(extractions);
             var graph = GraphBuilder.Build(extractions);
