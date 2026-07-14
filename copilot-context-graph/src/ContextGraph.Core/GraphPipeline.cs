@@ -14,9 +14,29 @@ public static class GraphPipeline
         var graph = await ExtractAsync(loaded, ct);
 
         var communities = Louvain.Cluster(graph);
+        var resolvedOutDir = outDir ?? Path.Combine(loaded.RootDir, DefaultOutDir);
+        if (PreviousAssignment(Path.Combine(resolvedOutDir, "graph.json")) is { } previous)
+            communities = Louvain.RemapToPrevious(graph, communities, previous);
         var labels = Louvain.LabelCommunities(graph, communities);
         var analysis = Analyzer.Analyze(graph, communities, labels);
-        return new BuildResult(graph, analysis, loaded, outDir ?? Path.Combine(loaded.RootDir, DefaultOutDir));
+        return new BuildResult(graph, analysis, loaded, resolvedOutDir);
+    }
+
+    /// <summary>node id → community from the previous build, so ids stay stable.</summary>
+    private static Dictionary<string, int>? PreviousAssignment(string graphJsonPath)
+    {
+        if (!File.Exists(graphJsonPath))
+            return null;
+        try
+        {
+            return JsonExporter.Read(graphJsonPath).Nodes.Values
+                .Where(n => n.Community is not null)
+                .ToDictionary(n => n.Id, n => n.Community!.Value);
+        }
+        catch (Exception)
+        {
+            return null; // corrupt/old-format previous graph: cluster fresh
+        }
     }
 
     public static async Task<KnowledgeGraph> ExtractAsync(LoadedSolution loaded, CancellationToken ct = default)

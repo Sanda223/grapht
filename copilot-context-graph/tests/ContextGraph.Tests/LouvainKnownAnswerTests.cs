@@ -41,6 +41,33 @@ public class LouvainKnownAnswerTests
         Assert.Contains(communities.Values, members => members is ["lonely"]);
     }
 
+    [Fact]
+    public void RemapKeepsCommunityIdsStableWhenSizesShift()
+    {
+        var first = Cliques(count: 2, size: 8);
+        first.AddEdge(new Edge { Source = "c0n0", Target = "c1n0", Relation = "calls" });
+        Louvain.Cluster(first);
+        var previous = first.Nodes.Values.ToDictionary(n => n.Id, n => n.Community!.Value);
+        int c0Was = first.Nodes["c0n0"].Community!.Value, c1Was = first.Nodes["c1n0"].Community!.Value;
+
+        // Same shape, but clique 1 grows past clique 0 — fresh clustering would swap the
+        // size-ordered ids; the remap must keep them.
+        var second = Cliques(count: 2, size: 8);
+        second.AddEdge(new Edge { Source = "c0n0", Target = "c1n0", Relation = "calls" });
+        for (var i = 0; i < 4; i++)
+        {
+            second.AddNode(new Node { Id = $"c1x{i}", Label = $"c1x{i}" });
+            second.AddEdge(new Edge { Source = $"c1x{i}", Target = "c1n0", Relation = "calls" });
+            second.AddEdge(new Edge { Source = $"c1x{i}", Target = "c1n1", Relation = "calls" });
+        }
+        var communities = Louvain.Cluster(second);
+        Louvain.RemapToPrevious(second, communities, previous);
+
+        Assert.Equal(c0Was, second.Nodes["c0n0"].Community);
+        Assert.Equal(c1Was, second.Nodes["c1n0"].Community);
+        Assert.Equal(c1Was, second.Nodes["c1x0"].Community); // newcomer joins the stable id
+    }
+
     private static KnowledgeGraph Cliques(int count, int size)
     {
         var graph = new KnowledgeGraph();

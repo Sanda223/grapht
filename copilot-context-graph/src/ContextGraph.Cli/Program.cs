@@ -165,6 +165,19 @@ usageCmd.SetAction(parseResult =>
     return 0;
 });
 
+var baseArg = new Argument<string>("base") { Description = "Base graph.json (e.g. from the main branch)" };
+var headArg = new Argument<string>("head") { Description = "Head graph.json (e.g. from the PR branch)" };
+var diffCmd = new Command("diff", "Structural diff between two graph builds (markdown, PR-comment ready)");
+diffCmd.Arguments.Add(baseArg);
+diffCmd.Arguments.Add(headArg);
+diffCmd.SetAction(parseResult =>
+{
+    var baseGraph = JsonExporter.Read(parseResult.GetValue(baseArg)!);
+    var headGraph = JsonExporter.Read(parseResult.GetValue(headArg)!);
+    Console.WriteLine(GraphDiff.RenderMarkdown(GraphDiff.Compute(baseGraph, headGraph), headGraph));
+    return 0;
+});
+
 var root = new RootCommand("context-graph: knowledge graph for .NET solutions");
 root.Subcommands.Add(buildCmd);
 root.Subcommands.Add(queryCmd);
@@ -172,4 +185,5 @@ root.Subcommands.Add(pathCmd);
 root.Subcommands.Add(explainCmd);
 root.Subcommands.Add(statsCmd);
 root.Subcommands.Add(usageCmd);
+root.Subcommands.Add(diffCmd);
 return await root.Parse(args).InvokeAsync();

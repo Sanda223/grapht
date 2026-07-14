@@ -81,6 +81,14 @@ public sealed class GraphService : IDisposable
             RazorResolver.Resolve(extractions);
             var graph = GraphBuilder.Build(extractions);
             var communities = Louvain.Cluster(graph);
+            // Keep community ids stable across incremental rebuilds within the session.
+            if (_current is { } previous)
+            {
+                var previousAssignment = previous.Graph.Nodes.Values
+                    .Where(n => n.Community is not null)
+                    .ToDictionary(n => n.Id, n => n.Community!.Value);
+                communities = Louvain.RemapToPrevious(graph, communities, previousAssignment);
+            }
             var labels = Louvain.LabelCommunities(graph, communities);
             var analysis = Analyzer.Analyze(graph, communities, labels);
             _current = new Snapshot(graph, new QueryEngine(graph), analysis);
