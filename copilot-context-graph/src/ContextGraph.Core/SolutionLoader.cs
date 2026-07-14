@@ -12,6 +12,12 @@ public sealed record LoadedSolution(
 {
     public IEnumerable<Project> CSharpProjects =>
         Solution.Projects.Where(p => p.Language == LanguageNames.CSharp);
+
+    /// <summary>One project per csproj. Multi-targeted projects (MAUI: android/ios/…)
+    /// load once per TFM with the same documents; extracting each is 3-4x wasted work.
+    /// First TFM wins — code behind other TFMs' #if branches is not extracted.</summary>
+    public IEnumerable<Project> DistinctProjects =>
+        CSharpProjects.GroupBy(p => p.FilePath ?? p.Name).Select(g => g.First());
 }
 
 public static class SolutionLoader

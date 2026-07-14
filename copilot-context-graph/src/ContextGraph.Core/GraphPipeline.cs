@@ -25,7 +25,7 @@ public static class GraphPipeline
         var razorExtractor = new RazorExtractor(loaded.RootDir);
 
         var extractions = new List<Extraction>();
-        foreach (var project in loaded.CSharpProjects)
+        foreach (var project in loaded.DistinctProjects)
             foreach (var document in project.Documents)
                 extractions.Add(await extractor.ExtractAsync(document, ct));
         foreach (var razorFile in loaded.RazorFiles)

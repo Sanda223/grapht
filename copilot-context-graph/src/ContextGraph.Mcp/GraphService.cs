@@ -62,7 +62,7 @@ public sealed class GraphService : IDisposable
             var razorExtractor = new RazorExtractor(_loaded.RootDir);
 
             var extractions = new List<Extraction>();
-            foreach (var project in _loaded.CSharpProjects)
+            foreach (var project in _loaded.DistinctProjects)
                 foreach (var document in project.Documents)
                 {
                     if (document.FilePath is null)

@@ -55,9 +55,8 @@ public static class CsprojExtractor
 
     /// <summary>One extraction per project in the solution.</summary>
     public static IEnumerable<Extraction> ExtractAll(LoadedSolution loaded) =>
-        loaded.CSharpProjects
+        loaded.DistinctProjects
             .Select(p => p.FilePath)
             .Where(p => p is not null && File.Exists(p))
-            .Distinct()
             .Select(p => Extract(p!, loaded.RootDir));
 }

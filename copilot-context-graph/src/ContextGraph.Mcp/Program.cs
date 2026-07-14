@@ -13,6 +13,10 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
 
+var rootDir = Directory.Exists(solutionPath)
+    ? Path.GetFullPath(solutionPath)
+    : Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
+builder.Services.AddSingleton(new QueryLog(rootDir));
 builder.Services.AddSingleton(new GraphService(solutionPath));
 builder.Services.AddHostedService<GraphInitializer>();
 builder.Services

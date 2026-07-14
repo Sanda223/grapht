@@ -17,7 +17,7 @@ buildCmd.SetAction(async (parseResult, ct) =>
     Console.WriteLine($"Loading {path} ...");
     var result = await GraphPipeline.BuildAsync(path, parseResult.GetValue(outOption), ct);
 
-    foreach (var project in result.Loaded.CSharpProjects)
+    foreach (var project in result.Loaded.DistinctProjects)
         Console.WriteLine($"  project {project.Name}: {project.Documents.Count()} documents");
     Console.WriteLine($"  razor files: {result.Loaded.RazorFiles.Count}");
 
@@ -127,10 +127,49 @@ statsCmd.SetAction(parseResult =>
     return 0;
 });
 
+var logOption = new Option<string>("--log") { Description = "Path to querylog.jsonl", DefaultValueFactory = _ => Path.Combine(GraphPipeline.DefaultOutDir, "querylog.jsonl") };
+var usageCmd = new Command("report-usage", "Summarize MCP tool usage from the query log");
+usageCmd.Options.Add(logOption);
+usageCmd.SetAction(parseResult =>
+{
+    var logPath = parseResult.GetValue(logOption)!;
+    if (!File.Exists(logPath))
+    {
+        Console.Error.WriteLine($"No query log at {logPath} — the MCP server writes it as tools get used.");
+        return 1;
+    }
+    var byTool = new Dictionary<string, (int Calls, long Chars)>();
+    DateTimeOffset? first = null, last = null;
+    foreach (var line in File.ReadLines(logPath))
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(line);
+            var tool = doc.RootElement.GetProperty("tool").GetString()!;
+            var chars = doc.RootElement.GetProperty("result_chars").GetInt64();
+            var ts = DateTimeOffset.Parse(doc.RootElement.GetProperty("ts").GetString()!);
+            var (calls, total) = byTool.GetValueOrDefault(tool);
+            byTool[tool] = (calls + 1, total + chars);
+            first = first is null || ts < first ? ts : first;
+            last = last is null || ts > last ? ts : last;
+        }
+        catch (Exception)
+        {
+            // skip malformed lines
+        }
+    }
+    Console.WriteLine($"Query log: {byTool.Values.Sum(v => v.Calls)} calls, {first:yyyy-MM-dd} .. {last:yyyy-MM-dd}\n");
+    Console.WriteLine($"{"tool",-18} {"calls",6} {"avg result chars",18}");
+    foreach (var (tool, (calls, chars)) in byTool.OrderByDescending(kv => kv.Value.Calls))
+        Console.WriteLine($"{tool,-18} {calls,6} {chars / Math.Max(1, calls),18:N0}");
+    return 0;
+});
+
 var root = new RootCommand("context-graph: knowledge graph for .NET solutions");
 root.Subcommands.Add(buildCmd);
 root.Subcommands.Add(queryCmd);
 root.Subcommands.Add(pathCmd);
 root.Subcommands.Add(explainCmd);
 root.Subcommands.Add(statsCmd);
+root.Subcommands.Add(usageCmd);
 return await root.Parse(args).InvokeAsync();
