@@ -46,6 +46,51 @@ public static class Louvain
         return communities;
     }
 
+    /// <summary>Renumber freshly clustered communities to match a previous run's ids by
+    /// best member overlap, so community 3 stays community 3 across rebuilds (stable ids
+    /// make graph diffs and cross-session references readable). Unmatched communities get
+    /// fresh ids above the previous maximum. Mutates Node.Community; returns the remapped
+    /// dictionary.</summary>
+    public static Dictionary<int, List<string>> RemapToPrevious(
+        KnowledgeGraph graph,
+        Dictionary<int, List<string>> current,
+        IReadOnlyDictionary<string, int> previousAssignment)
+    {
+        if (previousAssignment.Count == 0)
+            return current;
+
+        // Single ordered pass: biggest communities claim their best previous id first;
+        // unmatched ones take fresh ids above the previous maximum.
+        var taken = new HashSet<int>();
+        var mapping = new Dictionary<int, int>();
+        var nextId = previousAssignment.Values.Max() + 1;
+        foreach (var (id, members) in current.OrderByDescending(kv => kv.Value.Count).ThenBy(kv => kv.Key))
+        {
+            var overlap = new Dictionary<int, int>();
+            foreach (var member in members)
+                if (previousAssignment.TryGetValue(member, out var previous))
+                    overlap[previous] = overlap.GetValueOrDefault(previous) + 1;
+            var best = overlap.Where(kv => !taken.Contains(kv.Key))
+                .OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key)
+                .Select(kv => (int?)kv.Key).FirstOrDefault();
+            mapping[id] = best ?? nextId++;
+            if (best is { } match)
+                taken.Add(match);
+        }
+
+        var remapped = current.ToDictionary(kv => mapping[kv.Key], kv => kv.Value);
+        foreach (var (newId, members) in remapped)
+            foreach (var member in members)
+                graph.Nodes[member].Community = newId;
+        return remapped;
+    }
+
+    /// <summary>node id → community id, the input RemapToPrevious expects.</summary>
+    public static Dictionary<string, int> AssignmentOf(KnowledgeGraph graph) =>
+        graph.Nodes.Values
+            .Where(n => n.Community is not null)
+            .ToDictionary(n => n.Id, n => n.Community!.Value);
+
     /// <summary>Name each community after its highest-degree member.</summary>
     public static Dictionary<int, string> LabelCommunities(KnowledgeGraph graph, Dictionary<int, List<string>> communities) =>
         communities.ToDictionary(

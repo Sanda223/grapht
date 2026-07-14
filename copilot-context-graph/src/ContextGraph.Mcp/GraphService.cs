@@ -62,7 +62,7 @@ public sealed class GraphService : IDisposable
             var razorExtractor = new RazorExtractor(_loaded.RootDir);
 
             var extractions = new List<Extraction>();
-            foreach (var project in _loaded.CSharpProjects)
+            foreach (var project in _loaded.DistinctProjects)
                 foreach (var document in project.Documents)
                 {
                     if (document.FilePath is null)
@@ -78,11 +78,11 @@ public sealed class GraphService : IDisposable
                     extractions.Add(extraction);
             extractions.AddRange(CsprojExtractor.ExtractAll(_loaded));
 
-            RazorResolver.Resolve(extractions);
-            var graph = GraphBuilder.Build(extractions);
-            var communities = Louvain.Cluster(graph);
-            var labels = Louvain.LabelCommunities(graph, communities);
-            var analysis = Analyzer.Analyze(graph, communities, labels);
+            // Shared assembly stages (resolve→build→cluster→remap→analyze) so the MCP
+            // graph can never drift from what the CLI would build; ids stay stable
+            // across incremental rebuilds via the previous snapshot's assignment.
+            var (graph, analysis) = GraphPipeline.Assemble(
+                extractions, _current is { } previous ? Louvain.AssignmentOf(previous.Graph) : null);
             _current = new Snapshot(graph, new QueryEngine(graph), analysis);
         }
         finally

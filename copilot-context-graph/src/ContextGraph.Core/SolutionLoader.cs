@@ -12,11 +12,19 @@ public sealed record LoadedSolution(
 {
     public IEnumerable<Project> CSharpProjects =>
         Solution.Projects.Where(p => p.Language == LanguageNames.CSharp);
+
+    /// <summary>One project per csproj. Multi-targeted projects (MAUI: android/ios/…)
+    /// load once per TFM with mostly identical documents; extracting each is 3-4x wasted
+    /// work. The TFM with the most documents wins (closest to a superset) — code visible
+    /// only under a different TFM's #if branches is still not extracted.</summary>
+    public IEnumerable<Project> DistinctProjects =>
+        CSharpProjects.GroupBy(p => p.FilePath ?? p.Name)
+            .Select(g => g.OrderByDescending(p => p.Documents.Count()).ThenBy(p => p.Name, StringComparer.Ordinal).First());
 }
 
 public static class SolutionLoader
 {
-    private static readonly string[] SkipDirs = ["bin", "obj", "node_modules", ".git"];
+    private static readonly string[] SkipDirs = ["bin", "obj", "node_modules", ".git", GraphPipeline.DefaultOutDir];
 
     /// <summary>Load a solution/project. <paramref name="path"/> may be a directory, .sln, .slnx, or .csproj.</summary>
     public static async Task<LoadedSolution> LoadAsync(string path, CancellationToken ct = default)
@@ -66,6 +74,11 @@ public static class SolutionLoader
         {
             if (SkipDirs.Contains(dir.Name, StringComparer.OrdinalIgnoreCase))
                 return;
+            // Any output dir (incl. custom --out locations) is recognized by its report
+            // file — otherwise the next build would ingest its own GRAPH_REPORT.md and
+            // inflate god-node degrees in a feedback loop.
+            if (File.Exists(Path.Combine(dir.FullName, "GRAPH_REPORT.md")))
+                return;
             foreach (var file in dir.EnumerateFiles())
             {
                 if (file.Extension is ".razor" or ".cshtml")
@@ -82,7 +95,7 @@ public static class SolutionLoader
         Path.GetExtension(name).ToLowerInvariant() switch
         {
             ".js" => !name.EndsWith(".min.js", StringComparison.OrdinalIgnoreCase),
-            ".sql" or ".bicep" => true,
+            ".md" or ".sql" or ".bicep" => true,
             ".json" => name.StartsWith("appsettings", StringComparison.OrdinalIgnoreCase),
             ".yml" or ".yaml" => true, // dispatcher sniffs compose vs pipeline vs other
             _ => false,

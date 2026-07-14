@@ -18,7 +18,8 @@ public static partial class JsExtractor
     {
         var extraction = new Extraction();
         var text = File.ReadAllText(filePath);
-        var relPath = Path.GetRelativePath(rootDir, filePath).Replace('\\', '/');
+        var relPath = TextUtil.RelPath(filePath, rootDir);
+        var lines = new LineIndex(text);
         extraction.Nodes.Add(new Node { Id = relPath, Label = Path.GetFileName(relPath), Type = "js_file", SourceFile = relPath });
 
         var functions = FunctionRx().Matches(text).Concat(ArrowRx().Matches(text)).Concat(WindowRx().Matches(text));
@@ -32,7 +33,7 @@ public static partial class JsExtractor
                 FileType = "concept",
                 Type = "js_function",
                 SourceFile = relPath,
-                SourceLocation = "L" + (text[..match.Index].Count(c => c == '\n') + 1),
+                SourceLocation = lines.LabelAt(match.Index),
             });
             extraction.Edges.Add(new Edge { Source = relPath, Target = jsId, Relation = Relation.Contains, SourceFile = relPath });
         }
@@ -45,7 +46,7 @@ public static partial class JsExtractor
                 Relation = Relation.Calls,
                 Context = "call",
                 SourceFile = relPath,
-                SourceLocation = "L" + (text[..match.Index].Count(c => c == '\n') + 1),
+                SourceLocation = lines.LabelAt(match.Index),
             });
         return extraction;
     }

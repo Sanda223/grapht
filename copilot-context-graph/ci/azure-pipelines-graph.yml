@@ -1,0 +1,58 @@
+# Builds the knowledge graph for YOUR application repo on every main commit and
+# publishes it as a pipeline artifact ("shared graph": dev machines download this
+# instead of cold-building; PR builds diff against it).
+#
+# Put this in the APPLICATION repo (not the tool repo). Wire-up needed:
+#   - the context-graph CLI available from your feed (see azure-pipelines-tool.yml)
+#   - for PR runs, allow the build service to comment on PRs (see the diff step)
+trigger:
+  branches:
+    include: [main]
+pr:
+  branches:
+    include: [main]
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - task: UseDotNet@2
+    inputs:
+      version: 10.0.x
+
+  - script: dotnet tool install -g ContextGraph.Cli   # add --add-source for your feed
+    displayName: Install context-graph
+
+  - script: |
+      dotnet restore
+      context-graph build . --no-html
+    displayName: Build graph
+
+  - publish: context-graph-out/graph.json
+    artifact: context-graph
+    displayName: Publish graph artifact
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+
+  # PR runs: diff against the latest main graph and post the markdown as a comment.
+  - task: DownloadPipelineArtifact@2
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+    inputs:
+      buildType: specific
+      project: $(System.TeamProject)
+      definition: $(System.DefinitionId)
+      buildVersionToDownload: latestFromBranch
+      branchName: refs/heads/main
+      artifactName: context-graph
+      targetPath: $(Pipeline.Workspace)/base-graph
+
+  - script: |
+      context-graph diff $(Pipeline.Workspace)/base-graph/graph.json context-graph-out/graph.json > graph-diff.md
+      cat graph-diff.md
+      # Post as PR comment via the Azure DevOps REST API:
+      curl -s -X POST \
+        -H "Authorization: Bearer $(System.AccessToken)" \
+        -H "Content-Type: application/json" \
+        -d "$(jq -n --rawfile body graph-diff.md '{comments: [{parentCommentId: 0, content: $body, commentType: 1}], status: 1}')" \
+        "$(System.CollectionUri)$(System.TeamProject)/_apis/git/repositories/$(Build.Repository.ID)/pullRequests/$(System.PullRequest.PullRequestId)/threads?api-version=7.1"
+    displayName: Graph diff -> PR comment
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))

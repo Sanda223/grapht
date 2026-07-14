@@ -15,6 +15,11 @@ public class OrderQueries
     {
         return _db.ExecuteAsync("EXEC dbo.GetOrderTotals");
     }
+
+    public Task<IEnumerable<decimal>> TotalsAbove(decimal floor)
+    {
+        return _db.QueryAsync<decimal>($"SELECT Total FROM dbo.Orders WHERE Total > {floor}");
+    }
 }
 
 public class DbConnectionStub

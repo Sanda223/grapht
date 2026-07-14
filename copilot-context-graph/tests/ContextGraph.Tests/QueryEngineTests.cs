@@ -25,9 +25,21 @@ public class QueryEngineTests : IClassFixture<BuiltGraphFixture>
     [Fact]
     public void QueryRespectsTokenBudget()
     {
+        // Slack covers the reading list, which is always included — it's the payload
+        // that makes the call worth its tokens.
         var answer = _engine.Query("order", tokenBudget: 100);
-        Assert.True(answer.Length <= 100 * 3 + 200, $"answer too long: {answer.Length} chars");
+        Assert.True(answer.Length <= 100 * 3 + 700, $"answer too long: {answer.Length} chars");
         Assert.Contains("truncated", answer);
+    }
+
+    [Fact]
+    public void QueryEndsWithSpanReadingListAndContext()
+    {
+        var answer = _engine.Query("how does order total get calculated");
+        Assert.Contains("Context: community", answer);
+        Assert.Contains("Read these spans", answer);
+        // Method spans carry ranges, e.g. "Order.cs L8-L11 — Total()".
+        Assert.Matches(@"L\d+-L\d+ — ", answer);
     }
 
     [Fact]
@@ -61,6 +73,24 @@ public class QueryEngineTests : IClassFixture<BuiltGraphFixture>
         Assert.Contains("Source:    src/SampleApp.Services/OrderService.cs", answer);
         Assert.Contains("Connections (", answer);
         Assert.Contains("<-- Orders.razor [imports]", answer);
+    }
+
+    [Fact]
+    public void AmbiguousMethodNameReturnsCandidatesInsteadOfGuessing()
+    {
+        // Find() exists on both IRepository<T> and OrderRepository.
+        var answer = _engine.Explain("Find");
+        Assert.Contains("matches 2 distinct nodes", answer);
+        Assert.Contains("SampleApp.Domain.IRepository<T>.Find", answer);
+        Assert.Contains("SampleApp.Domain.OrderRepository.Find", answer);
+        // Requerying with the unique id resolves normally.
+        Assert.Contains("Degree:", _engine.Explain("SampleApp.Domain.OrderRepository.Find"));
+    }
+
+    [Fact]
+    public void ClassDoesNotCollideWithItsOwnConstructor()
+    {
+        Assert.Contains("ID:        SampleApp.Services.OrderService", _engine.Explain("OrderService"));
     }
 
     [Fact]

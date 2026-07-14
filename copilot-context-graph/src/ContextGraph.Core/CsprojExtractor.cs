@@ -10,7 +10,7 @@ public static class CsprojExtractor
     public static Extraction Extract(string csprojPath, string rootDir)
     {
         var extraction = new Extraction();
-        var relPath = Path.GetRelativePath(rootDir, csprojPath).Replace('\\', '/');
+        var relPath = TextUtil.RelPath(csprojPath, rootDir);
         var projectId = "project:" + Path.GetFileNameWithoutExtension(csprojPath);
         extraction.Nodes.Add(new Node { Id = projectId, Label = Path.GetFileNameWithoutExtension(csprojPath), Type = "project", SourceFile = relPath });
 
@@ -55,9 +55,8 @@ public static class CsprojExtractor
 
     /// <summary>One extraction per project in the solution.</summary>
     public static IEnumerable<Extraction> ExtractAll(LoadedSolution loaded) =>
-        loaded.CSharpProjects
+        loaded.DistinctProjects
             .Select(p => p.FilePath)
             .Where(p => p is not null && File.Exists(p))
-            .Distinct()
             .Select(p => Extract(p!, loaded.RootDir));
 }

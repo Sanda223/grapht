@@ -25,6 +25,14 @@ public class InfraAndDataTests : IClassFixture<BuiltGraphFixture>
     }
 
     [Fact]
+    public void InterpolatedSqlStringsAreMinedToo()
+    {
+        Assert.Contains(_graph.Edges, e =>
+            e.Source == "SampleApp.Services.OrderQueries.TotalsAbove" && e.Target == "table:orders" &&
+            e.Relation == Relation.Uses && e.Confidence == Confidence.Inferred);
+    }
+
+    [Fact]
     public void ConfigKeysAndReadsConnect()
     {
         // Indexer, GetConnectionString, and GetSection forms all resolve to declared keys.

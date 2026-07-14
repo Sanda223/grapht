@@ -12,8 +12,11 @@ files before answering**:
 
 1. Call `query_graph` / `shortest_path` / `impact_of_change` / `get_node` first
    (instead of grepping) to locate the relevant code precisely.
-2. Every result carries `path:line` references. **Open and read them.**
-3. Answer from the code, cite the locations.
+2. Results carry `path Lstart-Lend` **spans**. Read those spans — not whole files;
+   reading files the graph didn't point at wastes tokens.
+3. Answer from the code, cite the locations. When answering a person, lead with a
+   one-paragraph overview (the result's community-context line tells you the wider
+   area), then the detailed trace.
 
 Never answer from graph output alone: the graph shows *structure* (what connects
 to what), not *behavior* — ordering, conditions, and transaction semantics live

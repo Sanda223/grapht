@@ -44,6 +44,20 @@ public class RoslynExtractionTests : IClassFixture<BuiltGraphFixture>
     }
 
     [Fact]
+    public void ImplementingMethodLinksToInterfaceMethod()
+    {
+        // Without this edge, impact analysis on an interface method misses its implementations.
+        Assert.Contains(_graph.Edges, e =>
+            e.Source == "SampleApp.Domain.OrderRepository.Find" &&
+            e.Target == "SampleApp.Domain.IRepository<T>.Find" &&
+            e.Relation == Relation.Implements && e.Confidence == Confidence.Extracted);
+        Assert.Contains(_graph.Edges, e =>
+            e.Source == "SampleApp.Domain.OrderRepository.Save" &&
+            e.Target == "SampleApp.Domain.IRepository<T>.Save" &&
+            e.Relation == Relation.Implements);
+    }
+
+    [Fact]
     public void ImplementsAndFieldReferenceEdgesExist()
     {
         Assert.Contains(_graph.Edges, e =>

@@ -25,6 +25,7 @@ public static class Relation
     public const string Inherits = "inherits";
     public const string Implements = "implements";
     public const string References = "references";
+    public const string Overrides = "overrides"; // method → overridden base method
     public const string Uses = "uses";           // project → NuGet package
     public const string BoundTo = "bound_to";    // DI: service interface → registered implementation
     public const string Publishes = "publishes"; // message flow: publisher → message contract
@@ -39,8 +40,14 @@ public sealed class Node
     [JsonPropertyName("type")] public string? Type { get; init; }
     [JsonPropertyName("source_file")] public string? SourceFile { get; init; }
     [JsonPropertyName("source_location")] public string? SourceLocation { get; init; }
+    [JsonPropertyName("end_line")] public int? EndLine { get; init; }
     [JsonPropertyName("community")] public int? Community { get; set; }
     [JsonPropertyName("metadata")] public Dictionary<string, string>? Metadata { get; init; }
+
+    /// <summary>"L14-L38" when the end line is known, else the start location. Lets
+    /// consumers read the exact declaration span instead of the whole file.</summary>
+    [JsonIgnore] public string? Span =>
+        SourceLocation is null ? null : EndLine is { } end ? $"{SourceLocation}-L{end}" : SourceLocation;
 }
 
 public sealed class Edge

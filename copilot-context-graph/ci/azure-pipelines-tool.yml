@@ -1,0 +1,32 @@
+# Builds, tests, and publishes the context-graph tools to a private NuGet feed.
+# Wire-up needed: set FEED_NAME to your Azure Artifacts feed (e.g. MainFeed) and
+# grant the pipeline's build service "Contributor" on that feed.
+trigger:
+  branches:
+    include: [main]
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  FEED_NAME: 'MainFeed'   # <-- your Azure Artifacts feed
+
+steps:
+  - task: UseDotNet@2
+    inputs:
+      version: 10.0.x
+
+  - script: dotnet test copilot-context-graph/ContextGraph.slnx --configuration Release
+    displayName: Test
+
+  - script: |
+      dotnet pack copilot-context-graph/src/ContextGraph.Cli -c Release -o $(Build.ArtifactStagingDirectory)/nupkg
+      dotnet pack copilot-context-graph/src/ContextGraph.Mcp -c Release -o $(Build.ArtifactStagingDirectory)/nupkg
+    displayName: Pack
+
+  - task: DotNetCoreCLI@2
+    displayName: Push to feed
+    inputs:
+      command: push
+      packagesToPush: '$(Build.ArtifactStagingDirectory)/nupkg/*.nupkg'
+      publishVstsFeed: '$(FEED_NAME)'

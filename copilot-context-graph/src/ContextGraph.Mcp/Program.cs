@@ -13,6 +13,10 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
 
+var rootDir = Directory.Exists(solutionPath)
+    ? Path.GetFullPath(solutionPath)
+    : Path.GetDirectoryName(Path.GetFullPath(solutionPath))!;
+builder.Services.AddSingleton(new QueryLog(rootDir));
 builder.Services.AddSingleton(new GraphService(solutionPath));
 builder.Services.AddHostedService<GraphInitializer>();
 builder.Services
@@ -21,9 +25,11 @@ builder.Services
         o.ServerInfo = new() { Name = "context-graph", Version = "0.1.0" };
         o.ServerInstructions =
             "This server is an INDEX of the codebase, not an answer source. Its tools return " +
-            "graph structure (what connects to what) with file:line references. Always follow up " +
-            "by reading the referenced files — behavior (ordering, conditions, transactions) lives " +
-            "only in the code. Workflow: graph tool -> open the file:line results -> answer from code.";
+            "graph structure with file line-SPANS (e.g. L14-L38). Workflow: graph tool -> read the " +
+            "listed spans (NOT whole files — that wastes tokens) -> answer from code; behavior " +
+            "(ordering, conditions, transactions) lives only in the code. When answering a person, " +
+            "lead with a one-paragraph overview (the result's community context line tells you the " +
+            "wider area), then give the detailed trace with citations.";
     })
     .WithStdioServerTransport()
     .WithTools<GraphTools>();

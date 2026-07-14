@@ -64,7 +64,10 @@ public static class RazorResolver
             }
             if (target.StartsWith("byname:"))
             {
-                var candidates = TypesLabelled(target["byname:".Length..]);
+                var name = target["byname:".Length..];
+                var candidates = TypesLabelled(name);
+                if (candidates.Count == 0 && componentByStem.TryGetValue(name, out var component))
+                    return (component, confidence);
                 return candidates.Count switch
                 {
                     0 => (target, confidence),
@@ -103,6 +106,8 @@ public static class RazorResolver
         List<Node> TypesLabelled(string label) =>
             byLabel.TryGetValue(label, out var nodes)
                 ? nodes.Where(n => n.Type is "class" or "interface" or "struct" or "record" or "enum" or "component")
+                    // Stub declarations repeat the same id; distinct ids define real ambiguity.
+                    .DistinctBy(n => n.Id)
                     .OrderBy(n => n.Id, StringComparer.Ordinal).ToList()
                 : [];
     }
