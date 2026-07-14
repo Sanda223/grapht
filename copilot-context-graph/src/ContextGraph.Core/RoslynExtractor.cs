@@ -86,7 +86,7 @@ public sealed class RoslynExtractor
                 bases.Types.Any(b => b.Type.ToString() is var s && (s == "Hub" || s.StartsWith("Hub<"))))
                 metadata["hub"] = "true";
 
-            AddNode(id, symbol.Name, kind, Line(node), metadata);
+            AddNode(id, symbol.Name, kind, Line(node), metadata, EndLineOf(node));
             AddNamespace(symbol.ContainingNamespace, id);
             AddEdge(_fileId, id, Relation.Contains, Confidence.Extracted, Line(node));
 
@@ -133,7 +133,7 @@ public sealed class RoslynExtractor
             if (_model.GetDeclaredSymbol(node) is not IMethodSymbol symbol)
                 return;
             var id = SymbolId(symbol);
-            AddNode(id, symbol.Name + "()", "method", Line(node), JsInvokableMetadata(node, symbol.Name));
+            AddNode(id, symbol.Name + "()", "method", Line(node), JsInvokableMetadata(node, symbol.Name), EndLineOf(node));
             AddEdge(_scope.Peek(), id, Relation.Contains, Confidence.Extracted, Line(node));
             AddMethodLinkage(id, symbol, node);
             AddHttpRoute(id, node);
@@ -151,7 +151,7 @@ public sealed class RoslynExtractor
             if (_model.GetDeclaredSymbol(node) is not IMethodSymbol symbol)
                 return;
             var id = SymbolId(symbol);
-            AddNode(id, symbol.ContainingType.Name + "()", "method", Line(node), null);
+            AddNode(id, symbol.ContainingType.Name + "()", "method", Line(node), null, EndLineOf(node));
             AddEdge(_scope.Peek(), id, Relation.Contains, Confidence.Extracted, Line(node));
             foreach (var parameter in symbol.Parameters)
                 AddTypeReference(id, parameter.Type, "parameter_type", Line(node));
@@ -438,7 +438,7 @@ public sealed class RoslynExtractor
             AddEdge(nsId, typeId, Relation.Contains, Confidence.Extracted, null);
         }
 
-        private void AddNode(string id, string label, string type, string? location, Dictionary<string, string>? metadata) =>
+        private void AddNode(string id, string label, string type, string? location, Dictionary<string, string>? metadata, int? endLine = null) =>
             _extraction.Nodes.Add(new Node
             {
                 Id = id,
@@ -446,6 +446,7 @@ public sealed class RoslynExtractor
                 Type = type,
                 SourceFile = location is null ? null : _relPath,
                 SourceLocation = location,
+                EndLine = endLine,
                 Metadata = metadata,
             });
 
@@ -552,6 +553,7 @@ public sealed class RoslynExtractor
         }
 
         private string Line(SyntaxNode node) => "L" + (node.GetLocation().GetLineSpan().StartLinePosition.Line + 1);
+        private static int EndLineOf(SyntaxNode node) => node.GetLocation().GetLineSpan().EndLinePosition.Line + 1;
 
         private static string TypeKindName(INamedTypeSymbol symbol) => symbol.TypeKind switch
         {

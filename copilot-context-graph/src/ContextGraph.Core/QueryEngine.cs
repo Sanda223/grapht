@@ -20,12 +20,15 @@ public sealed partial class QueryEngine
 
     private readonly KnowledgeGraph _graph;
     private readonly Dictionary<int, string> _communityLabels;
+    private readonly Dictionary<int, int> _communitySizes;
     private readonly int _hubThreshold;
 
     public QueryEngine(KnowledgeGraph graph)
     {
         _graph = graph;
-        _communityLabels = Louvain.LabelCommunities(graph, CommunitiesFrom(graph));
+        var communities = CommunitiesFrom(graph);
+        _communityLabels = Louvain.LabelCommunities(graph, communities);
+        _communitySizes = communities.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
 
         var degrees = graph.Nodes.Keys.Select(graph.Degree).OrderBy(d => d).ToList();
         var p99 = degrees.Count == 0 ? 0 : degrees[(int)(degrees.Count * 0.99) is var i && i >= degrees.Count ? degrees.Count - 1 : i];
@@ -39,7 +42,7 @@ public sealed partial class QueryEngine
 
     // --- query ---
 
-    public string Query(string question, bool dfs = false, int depth = 2, int tokenBudget = 2000)
+    public string Query(string question, bool dfs = false, int depth = 2, int tokenBudget = 700)
     {
         var terms = Terms(question);
         if (terms.Count == 0)
@@ -104,7 +107,7 @@ public sealed partial class QueryEngine
         sb.AppendLine($"Node: {node.Label}");
         sb.AppendLine($"  ID:        {node.Id}");
         if (node.SourceFile is not null)
-            sb.AppendLine($"  Source:    {node.SourceFile} {node.SourceLocation}".TrimEnd());
+            sb.AppendLine($"  Source:    {node.SourceFile} {node.Span}".TrimEnd());
         sb.AppendLine($"  Type:      {node.Type ?? node.FileType}");
         sb.AppendLine($"  Community: {CommunityName(node)}");
         sb.AppendLine($"  Degree:    {_graph.Degree(id)}");
@@ -342,17 +345,24 @@ public sealed partial class QueryEngine
         var included = visited.ToHashSet();
         var sb = new StringBuilder();
         sb.AppendLine($"Traversal: {mode} depth={depth} | Start: [{string.Join(", ", seeds.Select(s => _graph.Nodes[s].Label))}] | {visited.Count} nodes found");
+        var context = CommunityContext(seeds);
+        if (context.Length > 0)
+            sb.AppendLine(context);
         sb.AppendLine();
 
         var ordered = seeds.Concat(visited.Except(seeds).OrderByDescending(_graph.Degree).ThenBy(x => x, StringComparer.Ordinal)).ToList();
         var truncated = false;
-        foreach (var id in ordered)
+        // Cap the node listing: relations are the graph's payload, and the reading-list
+        // footer already carries the locations — don't let node lines starve the edges.
+        foreach (var id in ordered.Take(12))
         {
             var node = _graph.Nodes[id];
             var line = $"NODE {node.Label} [src={node.SourceFile ?? "-"} loc={node.SourceLocation ?? "-"} community={CommunityName(node)}]";
             if (sb.Length + line.Length > charBudget) { truncated = true; break; }
             sb.AppendLine(line);
         }
+        if (ordered.Count > 12)
+            sb.AppendLine($"... and {ordered.Count - 12} more nodes");
         if (!truncated)
             foreach (var edge in _graph.Edges.Where(e => included.Contains(e.Source) && included.Contains(e.Target))
                          .OrderBy(e => e.Source, StringComparer.Ordinal).ThenBy(e => e.Target, StringComparer.Ordinal))
@@ -365,21 +375,45 @@ public sealed partial class QueryEngine
         if (truncated)
             sb.AppendLine($"... truncated at ~{tokenBudget} tokens (raise --budget for more)");
 
-        // The graph is an index: point at the code to read, most relevant first.
-        var files = ordered.Select(id => _graph.Nodes[id].SourceFile).Where(f => f is not null).Distinct().Take(8).ToList();
-        if (files.Count > 0 && sb.Length + 60 < charBudget)
+        // The graph is an index: point at the exact spans to read, most relevant first.
+        var spans = ordered.Select(id => _graph.Nodes[id])
+            .Where(n => n.SourceFile is not null && n.Span is not null)
+            .Select(n => (Line: $"  {n.SourceFile} {n.Span} — {n.Label}", Key: (n.SourceFile, n.Span)))
+            .DistinctBy(x => x.Key)
+            .Take(8)
+            .ToList();
+        if (spans.Count > 0)
         {
             sb.AppendLine();
-            sb.AppendLine("Read these files for behavior (the graph shows structure only):");
-            foreach (var file in files)
-            {
-                var line = $"  {file}";
-                if (sb.Length + line.Length > charBudget)
-                    break;
+            sb.AppendLine("Read these spans (not whole files) for behavior — the graph shows structure only:");
+            foreach (var (line, _) in spans)
                 sb.AppendLine(line);
-            }
         }
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>One orientation line so answers can zoom out: the seeds' community, its
+    /// size, and the most-connected neighboring communities.</summary>
+    private string CommunityContext(List<string> seeds)
+    {
+        var primary = seeds.Select(s => _graph.Nodes[s].Community).FirstOrDefault(c => c is not null);
+        if (primary is not { } community || !_communityLabels.TryGetValue(community, out var name))
+            return "";
+
+        var adjacency = new Dictionary<int, int>();
+        foreach (var edge in _graph.Edges)
+        {
+            int? a = _graph.Nodes[edge.Source].Community, b = _graph.Nodes[edge.Target].Community;
+            if (a == community && b is { } other && other != community)
+                adjacency[other] = adjacency.GetValueOrDefault(other) + 1;
+            else if (b == community && a is { } other2 && other2 != community)
+                adjacency[other2] = adjacency.GetValueOrDefault(other2) + 1;
+        }
+        var adjacent = adjacency.OrderByDescending(kv => kv.Value).Take(3)
+            .Select(kv => _communityLabels.GetValueOrDefault(kv.Key, kv.Key.ToString()))
+            .ToList();
+        var suffix = adjacent.Count > 0 ? $"; adjacent communities: {string.Join(", ", adjacent)}" : "";
+        return $"Context: community \"{name}\" ({_communitySizes.GetValueOrDefault(community)} members){suffix}";
     }
 
     private string CommunityName(Node node) =>

@@ -75,7 +75,7 @@ QueryEngine LoadEngine(string graphPath)
 var questionArg = new Argument<string>("question") { Description = "Plain-language question" };
 var dfsOption = new Option<bool>("--dfs") { Description = "Depth-first traversal (trace a specific path)" };
 var depthOption = new Option<int>("--depth") { Description = "Traversal depth", DefaultValueFactory = _ => 2 };
-var budgetOption = new Option<int>("--budget") { Description = "Answer token budget", DefaultValueFactory = _ => 2000 };
+var budgetOption = new Option<int>("--budget") { Description = "Answer token budget", DefaultValueFactory = _ => 700 };
 
 var queryCmd = new Command("query", "Traverse the graph from the concepts in a question");
 queryCmd.Arguments.Add(questionArg);

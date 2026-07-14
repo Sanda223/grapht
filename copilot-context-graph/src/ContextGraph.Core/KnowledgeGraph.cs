@@ -27,6 +27,7 @@ public sealed class KnowledgeGraph
                 Type = existing.Type ?? node.Type,
                 SourceFile = existing.SourceFile ?? node.SourceFile,
                 SourceLocation = existing.SourceLocation ?? node.SourceLocation,
+                EndLine = existing.EndLine ?? node.EndLine,
                 Community = existing.Community ?? node.Community,
                 Metadata = existing.Metadata ?? node.Metadata,
             };

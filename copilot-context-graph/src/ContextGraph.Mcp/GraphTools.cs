@@ -20,7 +20,7 @@ public sealed class GraphTools
         [Description("The question, e.g. \"how does order total get calculated\"")] string question,
         [Description("bfs (broad context, default) or dfs (trace a specific chain)")] string mode = "bfs",
         [Description("Traversal depth, 1-6")] int depth = 3,
-        [Description("Token budget for the answer")] int tokenBudget = 2000) =>
+        [Description("Token budget for the answer")] int tokenBudget = 700) =>
         _service.Current.Engine.Query(question, dfs: mode.Equals("dfs", StringComparison.OrdinalIgnoreCase), depth: Math.Clamp(depth, 1, 6), tokenBudget: tokenBudget);
 
     [McpServerTool(Name = "shortest_path")]
@@ -111,7 +111,7 @@ public sealed class GraphTools
             foreach (var (id, edge) in dependents)
             {
                 var node = graph.Nodes[id];
-                sb.AppendLine($"    {node.Label} [{edge.Relation}] ({node.SourceFile} {node.SourceLocation})".TrimEnd());
+                sb.AppendLine($"    {node.Label} [{edge.Relation}] ({node.SourceFile} {node.Span})".TrimEnd());
             }
         }
         return sb.ToString().TrimEnd();
