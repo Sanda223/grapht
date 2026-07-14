@@ -317,6 +317,21 @@ public sealed partial class QueryEngine
             }
         if (truncated)
             sb.AppendLine($"... truncated at ~{tokenBudget} tokens (raise --budget for more)");
+
+        // The graph is an index: point at the code to read, most relevant first.
+        var files = ordered.Select(id => _graph.Nodes[id].SourceFile).Where(f => f is not null).Distinct().Take(8).ToList();
+        if (files.Count > 0 && sb.Length + 60 < charBudget)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Read these files for behavior (the graph shows structure only):");
+            foreach (var file in files)
+            {
+                var line = $"  {file}";
+                if (sb.Length + line.Length > charBudget)
+                    break;
+                sb.AppendLine(line);
+            }
+        }
         return sb.ToString().TrimEnd();
     }
 
