@@ -29,6 +29,8 @@ public sealed partial class RazorExtractor
         extraction.Nodes.Add(new Node { Id = relPath, Label = Path.GetFileName(relPath), Type = "component", SourceFile = relPath });
 
         var (markup, code, codeStartLine) = SplitCodeBlock(text);
+        // markup is a prefix of text, so text line numbers are valid for markup offsets.
+        var lines = new LineIndex(text);
 
         void Add(string target, string relation, string confidence, string? location, string? context = null) =>
             extraction.Edges.Add(new Edge
@@ -41,22 +43,22 @@ public sealed partial class RazorExtractor
         {
             var routeId = "route:" + m.Groups[1].Value;
             extraction.Nodes.Add(new Node { Id = routeId, Label = m.Groups[1].Value, FileType = "concept", Type = "route", SourceFile = relPath });
-            Add(routeId, Relation.References, Confidence.Extracted, LineOf(markup, m.Index));
+            Add(routeId, Relation.References, Confidence.Extracted, lines.LabelAt(m.Index));
         }
 
         foreach (Match m in UsingRx().Matches(markup))
-            Add("ns:" + m.Groups[1].Value, Relation.Imports, Confidence.Extracted, LineOf(markup, m.Index), context: "import");
+            Add("ns:" + m.Groups[1].Value, Relation.Imports, Confidence.Extracted, lines.LabelAt(m.Index), context: "import");
 
         var injectedTypeByName = new Dictionary<string, string>();
         foreach (Match m in InjectRx().Matches(markup))
         {
             var typeName = ShortName(m.Groups[1].Value);
             injectedTypeByName[m.Groups[2].Value] = typeName;
-            Add("byname:" + typeName, Relation.Imports, Confidence.Extracted, LineOf(markup, m.Index), context: "import");
+            Add("byname:" + typeName, Relation.Imports, Confidence.Extracted, lines.LabelAt(m.Index), context: "import");
         }
 
         foreach (Match m in InheritsRx().Matches(markup))
-            Add("byname:" + ShortName(m.Groups[1].Value), Relation.Inherits, Confidence.Extracted, LineOf(markup, m.Index));
+            Add("byname:" + ShortName(m.Groups[1].Value), Relation.Inherits, Confidence.Extracted, lines.LabelAt(m.Index));
 
         foreach (var tag in ComponentTagRx().Matches(markup).Select(m => m.Groups[1].Value).Distinct())
             if (tag != stem)
@@ -130,18 +132,10 @@ public sealed partial class RazorExtractor
         {
             if (text[i] == '{') depth++;
             else if (text[i] == '}' && --depth == 0)
-                return (text[..at], text[(open + 1)..i], LineNumber(text, open));
+                return (text[..at], text[(open + 1)..i], new LineIndex(text).LineAt(open));
         }
-        return (text[..at], text[(open + 1)..], LineNumber(text, open));
+        return (text[..at], text[(open + 1)..], new LineIndex(text).LineAt(open));
     }
 
-    private static string ShortName(string typeName)
-    {
-        var generic = typeName.IndexOf('<');
-        var bare = generic >= 0 ? typeName[..generic] : typeName;
-        return bare[(bare.LastIndexOf('.') + 1)..];
-    }
-
-    private static int LineNumber(string text, int index) => text[..index].Count(c => c == '\n') + 1;
-    private static string LineOf(string text, int index) => "L" + LineNumber(text, index);
+    private static string ShortName(string typeName) => TextUtil.ShortName(typeName);
 }

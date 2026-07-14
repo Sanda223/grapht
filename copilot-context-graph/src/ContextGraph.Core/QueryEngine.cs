@@ -21,6 +21,7 @@ public sealed partial class QueryEngine
     private readonly KnowledgeGraph _graph;
     private readonly Dictionary<int, string> _communityLabels;
     private readonly Dictionary<int, int> _communitySizes;
+    private readonly Dictionary<int, Dictionary<int, int>> _communityAdjacency;
     private readonly int _hubThreshold;
 
     public QueryEngine(KnowledgeGraph graph)
@@ -29,10 +30,29 @@ public sealed partial class QueryEngine
         var communities = CommunitiesFrom(graph);
         _communityLabels = Louvain.LabelCommunities(graph, communities);
         _communitySizes = communities.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
+        // Precomputed once: the per-query edge scan was the hot-path cost of the
+        // context line on large graphs.
+        _communityAdjacency = [];
+        foreach (var edge in graph.Edges)
+        {
+            int? a = graph.Nodes[edge.Source].Community, b = graph.Nodes[edge.Target].Community;
+            if (a is { } ca && b is { } cb && ca != cb)
+            {
+                Bump(ca, cb);
+                Bump(cb, ca);
+            }
+        }
 
         var degrees = graph.Nodes.Keys.Select(graph.Degree).OrderBy(d => d).ToList();
         var p99 = degrees.Count == 0 ? 0 : degrees[(int)(degrees.Count * 0.99) is var i && i >= degrees.Count ? degrees.Count - 1 : i];
         _hubThreshold = Math.Max(50, p99);
+
+        void Bump(int from, int to)
+        {
+            if (!_communityAdjacency.TryGetValue(from, out var counts))
+                _communityAdjacency[from] = counts = [];
+            counts[to] = counts.GetValueOrDefault(to) + 1;
+        }
     }
 
     public static Dictionary<int, List<string>> CommunitiesFrom(KnowledgeGraph graph) =>
@@ -60,18 +80,12 @@ public sealed partial class QueryEngine
 
     public string Path(string source, string target, int maxHops = 8)
     {
-        var sourceCandidates = ResolveNodeCandidates(source);
-        if (sourceCandidates.Count > 1)
-            return DescribeAmbiguity(source, sourceCandidates);
-        var targetCandidates = ResolveNodeCandidates(target);
-        if (targetCandidates.Count > 1)
-            return DescribeAmbiguity(target, targetCandidates);
-        var sourceNode = sourceCandidates.FirstOrDefault();
-        var targetNode = targetCandidates.FirstOrDefault();
-        if (sourceNode is null)
-            return $"No node matching \"{source}\"";
-        if (targetNode is null)
-            return $"No node matching \"{target}\"";
+        var (sourceNode, sourceError) = ResolveUnique(source);
+        if (sourceError is not null)
+            return sourceError;
+        var (targetNode, targetError) = ResolveUnique(target);
+        if (targetError is not null)
+            return targetError;
         if (sourceNode == targetNode)
             return $"\"{source}\" and \"{target}\" resolve to the same node: {_graph.Nodes[sourceNode].Label}";
 
@@ -95,13 +109,10 @@ public sealed partial class QueryEngine
 
     public string Explain(string label, int maxConnections = 20)
     {
-        var candidates = ResolveNodeCandidates(label);
-        if (candidates.Count > 1)
-            return DescribeAmbiguity(label, candidates);
-        var id = candidates.FirstOrDefault();
-        if (id is null)
-            return $"No node matching \"{label}\"";
-        var node = _graph.Nodes[id];
+        var (id, error) = ResolveUnique(label);
+        if (error is not null)
+            return error;
+        var node = _graph.Nodes[id!];
 
         var sb = new StringBuilder();
         sb.AppendLine($"Node: {node.Label}");
@@ -110,11 +121,11 @@ public sealed partial class QueryEngine
             sb.AppendLine($"  Source:    {node.SourceFile} {node.Span}".TrimEnd());
         sb.AppendLine($"  Type:      {node.Type ?? node.FileType}");
         sb.AppendLine($"  Community: {CommunityName(node)}");
-        sb.AppendLine($"  Degree:    {_graph.Degree(id)}");
+        sb.AppendLine($"  Degree:    {_graph.Degree(node.Id)}");
         sb.AppendLine();
 
-        var connections = _graph.OutEdges(id).Select(e => (edge: e, other: e.Target, outgoing: true))
-            .Concat(_graph.InEdges(id).Select(e => (edge: e, other: e.Source, outgoing: false)))
+        var connections = _graph.OutEdges(node.Id).Select(e => (edge: e, other: e.Target, outgoing: true))
+            .Concat(_graph.InEdges(node.Id).Select(e => (edge: e, other: e.Source, outgoing: false)))
             .OrderByDescending(c => _graph.Degree(c.other))
             .ThenBy(c => c.other, StringComparer.Ordinal)
             .ToList();
@@ -231,11 +242,21 @@ public sealed partial class QueryEngine
         return seeds;
     }
 
-    /// <summary>Resolve a user-supplied name to a node id (or null). Precedence:
-    /// source-file exact → label/id exact → prefix → substring; ties by degree.</summary>
-    public string? ResolveNode(string query) => BestMatch(query);
+    /// <summary>The one resolution entry point for tools: a unique node id, or the error
+    /// text to show (not-found / disambiguation list). Owning the ambiguity policy here
+    /// keeps every tool answering the same name the same way.</summary>
+    public (string? Id, string? Error) ResolveUnique(string query)
+    {
+        var candidates = ResolveNodeCandidates(query);
+        return candidates.Count switch
+        {
+            0 => (null, $"No node matching \"{query}\""),
+            1 => (candidates[0], null),
+            _ => (null, DescribeAmbiguity(query, candidates)),
+        };
+    }
 
-    /// <summary>Like ResolveNode, but when the name is genuinely ambiguous (multiple
+    /// <summary>Like ResolveUnique, but when the name is genuinely ambiguous (multiple
     /// exact label/id matches — e.g. five DeleteBasketAsync methods) returns all of
     /// them so tools can ask instead of silently guessing. Fuzzy (prefix/substring)
     /// matches still return the single best.</summary>
@@ -268,7 +289,7 @@ public sealed partial class QueryEngine
         foreach (var id in candidates.Take(10))
         {
             var node = _graph.Nodes[id];
-            sb.AppendLine($"  {id} [{node.Type ?? node.FileType}] ({node.SourceFile} {node.SourceLocation})".TrimEnd());
+            sb.AppendLine($"  {id} [{node.Type ?? node.FileType}] ({node.SourceFile} {node.Span})".TrimEnd());
         }
         return sb.ToString().TrimEnd();
     }
@@ -357,7 +378,7 @@ public sealed partial class QueryEngine
         foreach (var id in ordered.Take(12))
         {
             var node = _graph.Nodes[id];
-            var line = $"NODE {node.Label} [src={node.SourceFile ?? "-"} loc={node.SourceLocation ?? "-"} community={CommunityName(node)}]";
+            var line = $"NODE {node.Label} [src={node.SourceFile ?? "-"} loc={node.Span ?? "-"} community={CommunityName(node)}]";
             if (sb.Length + line.Length > charBudget) { truncated = true; break; }
             sb.AppendLine(line);
         }
@@ -380,7 +401,7 @@ public sealed partial class QueryEngine
             .Where(n => n.SourceFile is not null && n.Span is not null)
             .Select(n => (Line: $"  {n.SourceFile} {n.Span} — {n.Label}", Key: (n.SourceFile, n.Span)))
             .DistinctBy(x => x.Key)
-            .Take(8)
+            .Take(sb.Length > charBudget ? 3 : 8) // over budget: keep the floor, not the full list
             .ToList();
         if (spans.Count > 0)
         {
@@ -400,16 +421,8 @@ public sealed partial class QueryEngine
         if (primary is not { } community || !_communityLabels.TryGetValue(community, out var name))
             return "";
 
-        var adjacency = new Dictionary<int, int>();
-        foreach (var edge in _graph.Edges)
-        {
-            int? a = _graph.Nodes[edge.Source].Community, b = _graph.Nodes[edge.Target].Community;
-            if (a == community && b is { } other && other != community)
-                adjacency[other] = adjacency.GetValueOrDefault(other) + 1;
-            else if (b == community && a is { } other2 && other2 != community)
-                adjacency[other2] = adjacency.GetValueOrDefault(other2) + 1;
-        }
-        var adjacent = adjacency.OrderByDescending(kv => kv.Value).Take(3)
+        var adjacency = _communityAdjacency.GetValueOrDefault(community) ?? [];
+        var adjacent = adjacency.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key).Take(3)
             .Select(kv => _communityLabels.GetValueOrDefault(kv.Key, kv.Key.ToString()))
             .ToList();
         var suffix = adjacent.Count > 0 ? $"; adjacent communities: {string.Join(", ", adjacent)}" : "";

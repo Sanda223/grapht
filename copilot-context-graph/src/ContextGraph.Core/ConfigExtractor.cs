@@ -10,7 +10,7 @@ public static class ConfigExtractor
     public static Extraction Extract(string filePath, string rootDir)
     {
         var extraction = new Extraction();
-        var relPath = Path.GetRelativePath(rootDir, filePath).Replace('\\', '/');
+        var relPath = TextUtil.RelPath(filePath, rootDir);
         extraction.Nodes.Add(new Node { Id = relPath, Label = Path.GetFileName(relPath), Type = "config_file", SourceFile = relPath });
 
         JsonDocument doc;

@@ -40,20 +40,26 @@ public static class HtmlExporter
                 confidence = e.Confidence,
                 dashes = e.Confidence != Confidence.Extracted,
             });
-        var legend = analysis.Communities.OrderBy(kv => kv.Key).Select(kv => new
+        WriteHtml(path, nodes, edges, Legend(analysis, palette));
+    }
+
+    /// <summary>Single render/escape path for both the full and meta views: the `</`
+    /// escaping is an XSS guard for user-controlled labels inside a script tag and must
+    /// never diverge between them.</summary>
+    private static void WriteHtml(string path, object nodes, object edges, object legend)
+    {
+        var data = JsonSerializer.Serialize(new { nodes, edges, legend }).Replace("</", "<\\/");
+        File.WriteAllText(path, Template.Replace("__VIS_JS__", VisJs()).Replace("__DATA__", data));
+    }
+
+    private static object Legend(Analysis analysis, List<string> palette) =>
+        analysis.Communities.OrderBy(kv => kv.Key).Select(kv => new
         {
             id = kv.Key,
             name = analysis.CommunityLabels[kv.Key],
             count = kv.Value.Count,
             color = palette[kv.Key % palette.Count],
         });
-
-        var data = JsonSerializer.Serialize(new { nodes, edges, legend }).Replace("</", "<\\/");
-        var html = Template
-            .Replace("__VIS_JS__", VisJs())
-            .Replace("__DATA__", data);
-        File.WriteAllText(path, html);
-    }
 
     /// <summary>One node per community, sized by member count; edges weighted by how many
     /// relationships cross the pair. Readable at any scale.</summary>
@@ -95,16 +101,7 @@ public static class HtmlExporter
             confidence = Confidence.Extracted,
             dashes = false,
         });
-        var legend = analysis.Communities.OrderBy(kv => kv.Key).Select(kv => new
-        {
-            id = kv.Key,
-            name = analysis.CommunityLabels[kv.Key],
-            count = kv.Value.Count,
-            color = palette[kv.Key % palette.Count],
-        });
-
-        var data = JsonSerializer.Serialize(new { nodes, edges, legend }).Replace("</", "<\\/");
-        File.WriteAllText(path, Template.Replace("__VIS_JS__", VisJs()).Replace("__DATA__", data));
+        WriteHtml(path, nodes, edges, Legend(analysis, palette));
     }
 
     private static List<string> Palette(int count)

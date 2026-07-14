@@ -15,7 +15,8 @@ public static partial class InfraExtractor
     {
         var extraction = new Extraction();
         var text = File.ReadAllText(filePath);
-        var relPath = Path.GetRelativePath(rootDir, filePath).Replace('\\', '/');
+        var relPath = TextUtil.RelPath(filePath, rootDir);
+        var lines = new LineIndex(text);
         extraction.Nodes.Add(new Node { Id = relPath, Label = Path.GetFileName(relPath), Type = "bicep_file", SourceFile = relPath });
 
         foreach (Match match in BicepResourceRx().Matches(text))
@@ -28,7 +29,7 @@ public static partial class InfraExtractor
                 FileType = "concept",
                 Type = "infra_resource",
                 SourceFile = relPath,
-                SourceLocation = "L" + (text[..match.Index].Count(c => c == '\n') + 1),
+                SourceLocation = lines.LabelAt(match.Index),
                 Metadata = new() { ["resource_type"] = match.Groups[2].Value },
             });
             extraction.Edges.Add(new Edge { Source = relPath, Target = id, Relation = Relation.Contains, SourceFile = relPath });
@@ -47,7 +48,7 @@ public static partial class InfraExtractor
     public static Extraction ExtractCompose(string filePath, string rootDir)
     {
         var extraction = new Extraction();
-        var relPath = Path.GetRelativePath(rootDir, filePath).Replace('\\', '/');
+        var relPath = TextUtil.RelPath(filePath, rootDir);
         extraction.Nodes.Add(new Node { Id = relPath, Label = Path.GetFileName(relPath), Type = "compose_file", SourceFile = relPath });
 
         string? currentService = null;
@@ -101,7 +102,7 @@ public static partial class InfraExtractor
     {
         var extraction = new Extraction();
         var text = File.ReadAllText(filePath);
-        var relPath = Path.GetRelativePath(rootDir, filePath).Replace('\\', '/');
+        var relPath = TextUtil.RelPath(filePath, rootDir);
         extraction.Nodes.Add(new Node { Id = relPath, Label = Path.GetFileName(relPath), Type = "pipeline_file", SourceFile = relPath });
 
         foreach (var script in ScriptRefRx().Matches(text).Select(m => Path.GetFileName(m.Groups[1].Value)).Distinct())

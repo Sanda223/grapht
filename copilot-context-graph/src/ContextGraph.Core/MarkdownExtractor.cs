@@ -17,7 +17,8 @@ public static partial class MarkdownExtractor
     {
         var extraction = new Extraction();
         var text = File.ReadAllText(filePath);
-        var relPath = Path.GetRelativePath(rootDir, filePath).Replace('\\', '/');
+        var relPath = TextUtil.RelPath(filePath, rootDir);
+        var lines = new LineIndex(text);
         extraction.Nodes.Add(new Node { Id = relPath, Label = Path.GetFileName(relPath), FileType = "doc", Type = "doc", SourceFile = relPath });
 
         foreach (Match match in HeadingRx().Matches(text))
@@ -31,7 +32,7 @@ public static partial class MarkdownExtractor
                 FileType = "doc",
                 Type = "doc_section",
                 SourceFile = relPath,
-                SourceLocation = "L" + (text[..match.Index].Count(c => c == '\n') + 1),
+                SourceLocation = lines.LabelAt(match.Index),
             });
             extraction.Edges.Add(new Edge { Source = relPath, Target = id, Relation = Relation.Contains, SourceFile = relPath });
         }
@@ -46,7 +47,7 @@ public static partial class MarkdownExtractor
             extraction.Edges.Add(new Edge { Source = relPath, Target = targetRel, Relation = Relation.Imports, SourceFile = relPath });
         }
 
-        foreach (var mention in CodeSpanRx().Matches(text).Select(m => ShortName(m.Groups[1].Value)).Distinct())
+        foreach (var mention in CodeSpanRx().Matches(text).Select(m => TextUtil.ShortName(m.Groups[1].Value)).Distinct())
             extraction.Edges.Add(new Edge
             {
                 Source = relPath,
@@ -56,13 +57,6 @@ public static partial class MarkdownExtractor
                 SourceFile = relPath,
             });
         return extraction;
-    }
-
-    private static string ShortName(string identifier)
-    {
-        var generic = identifier.IndexOf('<');
-        var bare = generic >= 0 ? identifier[..generic] : identifier;
-        return bare[(bare.LastIndexOf('.') + 1)..];
     }
 
     private static string Slug(string title) =>

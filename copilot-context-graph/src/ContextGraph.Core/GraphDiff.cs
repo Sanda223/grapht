@@ -54,14 +54,9 @@ public static class GraphDiff
                 s.Community != t.Community &&
                 e.Relation is not (Relation.Contains or Relation.Imports))
             .ToList();
-        if (crossCommunity.Count > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine("### ⚠ New cross-community dependencies");
-            foreach (var edge in crossCommunity.Take(cap))
-                sb.AppendLine($"- `{Label(headGraph, edge.Source)}` --{edge.Relation}--> `{Label(headGraph, edge.Target)}`" +
-                              (edge.SourceFile is null ? "" : $" ({edge.SourceFile} {edge.SourceLocation})"));
-        }
+        Section("⚠ New cross-community dependencies", crossCommunity.Select(edge =>
+            $"- `{Label(headGraph, edge.Source)}` --{edge.Relation}--> `{Label(headGraph, edge.Target)}`" +
+            (edge.SourceFile is null ? "" : $" ({edge.SourceFile} {edge.SourceLocation})")));
 
         Section("Added nodes", diff.AddedNodes.Select(n => $"- `{n.Label}` [{n.Type ?? n.FileType}]" +
             (n.SourceFile is null ? "" : $" ({n.SourceFile} {n.SourceLocation})")));

@@ -59,8 +59,11 @@ public static class Louvain
         if (previousAssignment.Count == 0)
             return current;
 
+        // Single ordered pass: biggest communities claim their best previous id first;
+        // unmatched ones take fresh ids above the previous maximum.
         var taken = new HashSet<int>();
         var mapping = new Dictionary<int, int>();
+        var nextId = previousAssignment.Values.Max() + 1;
         foreach (var (id, members) in current.OrderByDescending(kv => kv.Value.Count).ThenBy(kv => kv.Key))
         {
             var overlap = new Dictionary<int, int>();
@@ -70,16 +73,10 @@ public static class Louvain
             var best = overlap.Where(kv => !taken.Contains(kv.Key))
                 .OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key)
                 .Select(kv => (int?)kv.Key).FirstOrDefault();
+            mapping[id] = best ?? nextId++;
             if (best is { } match)
-            {
-                mapping[id] = match;
                 taken.Add(match);
-            }
         }
-        var nextId = previousAssignment.Values.DefaultIfEmpty(-1).Max() + 1;
-        foreach (var id in current.Keys.OrderByDescending(k => current[k].Count).ThenBy(k => k))
-            if (!mapping.ContainsKey(id))
-                mapping[id] = nextId++;
 
         var remapped = current.ToDictionary(kv => mapping[kv.Key], kv => kv.Value);
         foreach (var (newId, members) in remapped)
@@ -87,6 +84,12 @@ public static class Louvain
                 graph.Nodes[member].Community = newId;
         return remapped;
     }
+
+    /// <summary>node id → community id, the input RemapToPrevious expects.</summary>
+    public static Dictionary<string, int> AssignmentOf(KnowledgeGraph graph) =>
+        graph.Nodes.Values
+            .Where(n => n.Community is not null)
+            .ToDictionary(n => n.Id, n => n.Community!.Value);
 
     /// <summary>Name each community after its highest-degree member.</summary>
     public static Dictionary<int, string> LabelCommunities(KnowledgeGraph graph, Dictionary<int, List<string>> communities) =>

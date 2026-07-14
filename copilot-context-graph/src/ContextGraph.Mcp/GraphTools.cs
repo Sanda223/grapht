@@ -68,7 +68,7 @@ public sealed class GraphTools
         for (var i = 0; i < gods.Count; i++)
         {
             var node = snapshot.Graph.Nodes[gods[i].Id];
-            sb.AppendLine($"  {i + 1}. {gods[i].Label} - {gods[i].Degree} edges ({node.SourceFile} {node.SourceLocation})".TrimEnd());
+            sb.AppendLine($"  {i + 1}. {gods[i].Label} - {gods[i].Degree} edges ({node.SourceFile} {node.Span})".TrimEnd());
         }
         return _log.Record("god_nodes", topN.ToString(), sb.ToString().TrimEnd());
     }
@@ -85,16 +85,13 @@ public sealed class GraphTools
     {
         var snapshot = _service.Current;
         var graph = snapshot.Graph;
-        var candidates = snapshot.Engine.ResolveNodeCandidates(label);
-        if (candidates.Count > 1)
-            return snapshot.Engine.DescribeAmbiguity(label, candidates);
-        var resolved = candidates.FirstOrDefault();
-        if (resolved is null)
-            return $"No node matching \"{label}\"";
+        var (resolved, error) = snapshot.Engine.ResolveUnique(label);
+        if (error is not null)
+            return _log.Record("impact_of_change", label, error);
 
         var byDistance = new Dictionary<int, List<(string id, Edge edge)>>();
-        var seen = new HashSet<string> { resolved };
-        var frontier = new List<string> { resolved };
+        var seen = new HashSet<string> { resolved! };
+        var frontier = new List<string> { resolved! };
         for (var d = 1; d <= Math.Clamp(depth, 1, 6) && frontier.Count > 0; d++)
         {
             var next = new List<string>();
@@ -110,7 +107,7 @@ public sealed class GraphTools
         }
 
         var total = byDistance.Values.Sum(v => v.Count);
-        var sb = new StringBuilder($"Impact of changing {graph.Nodes[resolved].Label}: {total} dependent node(s) within {depth} hop(s)\n");
+        var sb = new StringBuilder($"Impact of changing {graph.Nodes[resolved!].Label}: {total} dependent node(s) within {depth} hop(s)\n");
         foreach (var (distance, dependents) in byDistance.OrderBy(kv => kv.Key))
         {
             sb.AppendLine($"  {(distance == 1 ? "direct" : $"{distance} hops")}:");

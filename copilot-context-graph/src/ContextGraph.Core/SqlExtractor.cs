@@ -14,7 +14,8 @@ public static partial class SqlExtractor
     {
         var extraction = new Extraction();
         var text = File.ReadAllText(filePath);
-        var relPath = Path.GetRelativePath(rootDir, filePath).Replace('\\', '/');
+        var relPath = TextUtil.RelPath(filePath, rootDir);
+        var lines = new LineIndex(text);
         extraction.Nodes.Add(new Node { Id = relPath, Label = Path.GetFileName(relPath), Type = "sql_file", SourceFile = relPath });
 
         foreach (Match match in CreateRx().Matches(text))
@@ -34,7 +35,7 @@ public static partial class SqlExtractor
                 FileType = "concept",
                 Type = kind,
                 SourceFile = relPath,
-                SourceLocation = "L" + (text[..match.Index].Count(c => c == '\n') + 1),
+                SourceLocation = lines.LabelAt(match.Index),
             });
             extraction.Edges.Add(new Edge { Source = relPath, Target = id, Relation = Relation.Contains, SourceFile = relPath });
         }

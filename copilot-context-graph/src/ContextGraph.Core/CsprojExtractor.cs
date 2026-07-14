@@ -10,7 +10,7 @@ public static class CsprojExtractor
     public static Extraction Extract(string csprojPath, string rootDir)
     {
         var extraction = new Extraction();
-        var relPath = Path.GetRelativePath(rootDir, csprojPath).Replace('\\', '/');
+        var relPath = TextUtil.RelPath(csprojPath, rootDir);
         var projectId = "project:" + Path.GetFileNameWithoutExtension(csprojPath);
         extraction.Nodes.Add(new Node { Id = projectId, Label = Path.GetFileNameWithoutExtension(csprojPath), Type = "project", SourceFile = relPath });
 

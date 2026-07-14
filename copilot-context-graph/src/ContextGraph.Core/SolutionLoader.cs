@@ -14,10 +14,12 @@ public sealed record LoadedSolution(
         Solution.Projects.Where(p => p.Language == LanguageNames.CSharp);
 
     /// <summary>One project per csproj. Multi-targeted projects (MAUI: android/ios/…)
-    /// load once per TFM with the same documents; extracting each is 3-4x wasted work.
-    /// First TFM wins — code behind other TFMs' #if branches is not extracted.</summary>
+    /// load once per TFM with mostly identical documents; extracting each is 3-4x wasted
+    /// work. The TFM with the most documents wins (closest to a superset) — code visible
+    /// only under a different TFM's #if branches is still not extracted.</summary>
     public IEnumerable<Project> DistinctProjects =>
-        CSharpProjects.GroupBy(p => p.FilePath ?? p.Name).Select(g => g.First());
+        CSharpProjects.GroupBy(p => p.FilePath ?? p.Name)
+            .Select(g => g.OrderByDescending(p => p.Documents.Count()).ThenBy(p => p.Name, StringComparer.Ordinal).First());
 }
 
 public static class SolutionLoader
@@ -71,6 +73,11 @@ public static class SolutionLoader
         void Walk(DirectoryInfo dir)
         {
             if (SkipDirs.Contains(dir.Name, StringComparer.OrdinalIgnoreCase))
+                return;
+            // Any output dir (incl. custom --out locations) is recognized by its report
+            // file — otherwise the next build would ingest its own GRAPH_REPORT.md and
+            // inflate god-node degrees in a feedback loop.
+            if (File.Exists(Path.Combine(dir.FullName, "GRAPH_REPORT.md")))
                 return;
             foreach (var file in dir.EnumerateFiles())
             {
