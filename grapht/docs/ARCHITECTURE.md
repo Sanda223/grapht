@@ -2,7 +2,7 @@
 
 grapht builds a knowledge graph from a .NET solution and serves it to GitHub Copilot (VS Code) through MCP. This document is the build spec: contracts first, then each component.
 
-It deliberately mirrors Graphify's data contracts (graph.json schema, confidence tags, relation vocabulary, query semantics) so the reference implementation's behavior and tests can be used as an oracle. Where we diverge, the divergence is called out in §10.
+It deliberately mirrors Graphify's data contracts (graph.json schema, confidence tags, relation vocabulary, query semantics) so the reference implementation's behavior and tests can be used as an oracle. Where we diverge, the divergence is called out in §11.
 
 ## 1. Goals and non-goals
 
@@ -233,7 +233,30 @@ grapht stats
 
 All query commands operate on `grapht-out/graph.json`; `build` writes `graph.json`, `graph.html`, `GRAPH_REPORT.md`.
 
-## 10. Divergences from Graphify
+## 10. View server (`Grapht.View`)
+
+`grapht view [path] [--port N] [--no-open]` serves an interactive graph viewer over HTTP, for working live in a solution rather than sharing a static snapshot.
+
+`GraphService` (moved from `Grapht.Mcp` into `Grapht.Core` in this work, so both servers share one implementation) loads the solution, builds the graph, and watches the workspace exactly as the MCP server does — `ViewServer` just hosts it behind Kestrel instead of stdio.
+
+**Host**: `ViewServer.RunAsync` builds a `WebApplication` bound explicitly to `http://127.0.0.1:{port}` (default `5050`) — loopback only, since this serves source-derived data and must never be reachable off-machine. It opens a browser at that URL unless `--no-open` is passed.
+
+**Endpoints**, both shaped by pure functions in `GraphApi` (no I/O, directly testable):
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/graph` | `OverviewDto` — one `CommunityDto` per community (id, label, size, color, top members by degree) plus `MetaEdgeDto`s for cross-community edge counts. The community-level view; the full graph is never sent to the browser. |
+| `GET /api/node/{id}` | `FocusDto` — one `NodeDto` (id, label, type, span, community, degree, color) plus a `NeighbourDto` list (each neighbour's `NodeDto`, the relation, direction, and confidence). 404 if `id` doesn't match a node. |
+
+**Assets**: `index.html`, `app.css`, `app.js`, and a vendored `cytoscape.min.js` live under `Grapht.View/Assets/` and are embedded resources, served back over HTTP from `ViewServer` (`GET /`, `/app.css`, `/app.js`, `/cytoscape.min.js`) — no separate static file server, no CDN dependency.
+
+**UI model**: land on the community overview, search or click to focus one node and its neighbours, click a neighbour to expand, breadcrumb back, relation-filter checkboxes with live counts, light/dark theme toggle.
+
+**Known limitation**: search and overview-node clicks resolve against `/api/node/{id}` directly, which matches exact node ids only — the overview lists display labels, not the fully-qualified ids the focus endpoint needs, so e.g. `CheckoutAsync` will not resolve to `eShop.WebApp.BasketState.CheckoutAsync`. A fuzzy `/api/search` endpoint over `QueryEngine.ResolveNodeCandidates` is planned for a follow-up rather than shipped here.
+
+This does not replace `graph.html` (§9, `HtmlExporter`), which remains the shareable offline artifact; `view` is the live counterpart for working in a solution.
+
+## 11. Divergences from Graphify
 
 | Area | Graphify | Us | Why |
 |---|---|---|---|
@@ -245,6 +268,6 @@ All query commands operate on `grapht-out/graph.json`; `build` writes `graph.jso
 | Semantic pass (docs/PDF) | host-LLM via skill steps | absent (future: MCP sampling) | code-only covers the actual use case |
 | Noise control | post-hoc label blocklists | `IsInSource` filter at extraction | cut noise at the source |
 
-## 11. Testing
+## 12. Testing
 
 xUnit, one test class per component. The reference repo's 145 test files are the regression catalog — port the *scenarios* (not the code) that apply to C#/Razor: generic symbol flooding, indirect dispatch, cross-project resolution, dedup, zero-node solutions, budget truncation, seed selection. Fixtures: a small multi-project solution under `tests/fixtures/` including one legacy-style csproj and a Blazor component tree. Golden-file tests for `graph.json` (stable ids and deterministic ordering make byte-stable output feasible) and for query/path/explain text output.
