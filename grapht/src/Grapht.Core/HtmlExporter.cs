@@ -113,12 +113,16 @@ public static class HtmlExporter
         return colors;
     }
 
+    /// <summary>Only `&lt;/script&gt;` can terminate the block early, so escape exactly that
+    /// and nothing else. Escaping every `&lt;/` (as the JSON payload does) is fatal here:
+    /// vis-network contains the regex literal `/&lt;/`, and rewriting it to `/&lt;\/` stops the
+    /// slash from closing the regex — SyntaxError, no `vis` global, blank page.</summary>
     private static string VisJs()
     {
         using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Grapht.Core.Assets.vis-network.min.js")
             ?? throw new InvalidOperationException("vis-network resource missing");
         using var reader = new StreamReader(stream);
-        return reader.ReadToEnd().Replace("</", "<\\/");
+        return reader.ReadToEnd().Replace("</script", "<\\/script", StringComparison.OrdinalIgnoreCase);
     }
 
     private const string Template = """

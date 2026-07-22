@@ -100,4 +100,29 @@ public class ClusterAndAnalyzeTests : IClassFixture<BuiltGraphFixture>
             File.Delete(path);
         }
     }
+
+    /// <summary>Blanket `</` → `<\/` escaping is right for the JSON payload but corrupts
+    /// regex literals in JS source: vis-network's `/</.test(e)` became `/<\/.test(e)`,
+    /// where `\/` no longer closes the regex — SyntaxError, no `vis` global, blank page.
+    /// The bundle being embedded is not the same as the bundle running, so assert the
+    /// embedded copy is byte-identical to the asset.</summary>
+    [Fact]
+    public void EmbeddedVisBundleIsNotRewritten()
+    {
+        var communities = Louvain.Cluster(_graph);
+        var labels = Louvain.LabelCommunities(_graph, communities);
+        var analysis = Analyzer.Analyze(_graph, communities, labels);
+        var path = Path.Combine(Path.GetTempPath(), "ctxgraph-vis-" + Guid.NewGuid().ToString("N") + ".html");
+        try
+        {
+            HtmlExporter.Write(_graph, analysis, path);
+            var html = File.ReadAllText(path);
+            Assert.Contains("/</.test(", html);       // regex literal survives verbatim
+            Assert.DoesNotContain(@"/<\/.test(", html); // the corrupted form is gone
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }
