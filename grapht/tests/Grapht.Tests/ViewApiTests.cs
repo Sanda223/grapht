@@ -33,4 +33,27 @@ public class ViewApiTests : IClassFixture<BuiltGraphFixture>
         // deterministic ordering
         Assert.Equal(overview.Communities.Select(c => c.Id).Order(), overview.Communities.Select(c => c.Id));
     }
+
+    [Fact]
+    public void FocusReturnsNodeWithBothEdgeDirections()
+    {
+        var id = _graph.Nodes.Values.OrderByDescending(n => _graph.Degree(n.Id))
+                                    .ThenBy(n => n.Id, StringComparer.Ordinal).First().Id;
+
+        var focus = GraphApi.BuildFocus(_graph, _analysis, id);
+
+        Assert.NotNull(focus);
+        Assert.Equal(id, focus!.Node.Id);
+        Assert.Equal(_graph.Degree(id), focus.Node.Degree);
+        Assert.NotEmpty(focus.Neighbours);
+        Assert.All(focus.Neighbours, n => Assert.Contains(n.Direction, new[] { "in", "out" }));
+        Assert.Equal(_graph.OutEdges(id).Count, focus.Neighbours.Count(n => n.Direction == "out"));
+        Assert.Equal(_graph.InEdges(id).Count, focus.Neighbours.Count(n => n.Direction == "in"));
+    }
+
+    [Fact]
+    public void FocusReturnsNullForUnknownNode()
+    {
+        Assert.Null(GraphApi.BuildFocus(_graph, _analysis, "no-such-node-id"));
+    }
 }
