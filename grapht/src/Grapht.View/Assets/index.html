@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>grapht</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header>
+  <input id="search" type="search" placeholder="Search types, methods, files…" autocomplete="off" spellcheck="false">
+  <div id="brand"><strong>grapht</strong> <span id="counts" class="muted"></span></div>
+  <button id="theme" type="button" title="Toggle theme" aria-label="Toggle theme">◐</button>
+</header>
+<main>
+  <aside id="filters">
+    <h2>Relations</h2>
+    <div id="relation-filters"></div>
+  </aside>
+  <section id="canvas-wrap">
+    <div id="canvas"></div>
+    <nav id="breadcrumb" aria-label="Focus history"></nav>
+  </section>
+  <aside id="inspector">
+    <p class="empty">Search for a symbol, or click a community to explore it.</p>
+  </aside>
+</main>
+<div id="suggestions" role="listbox" hidden></div>
+<script src="/cytoscape.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
