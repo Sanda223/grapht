@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Grapht.Core\Grapht.Core.csproj" />
     <ProjectReference Include="..\..\src\Grapht.Cli\Grapht.Cli.csproj" />
+    <ProjectReference Include="..\..\src\Grapht.View\Grapht.View.csproj" />
   </ItemGroup>
 
 </Project>
