@@ -56,4 +56,23 @@ public class ViewApiTests : IClassFixture<BuiltGraphFixture>
     {
         Assert.Null(GraphApi.BuildFocus(_graph, _analysis, "no-such-node-id"));
     }
+
+    [Fact]
+    public void FocusResolvesIdContainingPercentEncodedSequenceWithoutDoubleDecoding()
+    {
+        // Route values arrive at BuildFocus already decoded once by ASP.NET Core's routing
+        // middleware — a node id may legitimately still contain a literal "%20" sequence.
+        const string id = "route:/api/catalog/items/by/wanderer%20black%20hiking%20boots";
+        const string doubleDecoded = "route:/api/catalog/items/by/wanderer black hiking boots";
+
+        var graph = new KnowledgeGraph();
+        graph.AddNode(new Node { Id = id, Label = "wanderer%20black%20hiking%20boots" });
+        var analysis = new Analysis([], [], [], [], [], []);
+
+        var focus = GraphApi.BuildFocus(graph, analysis, id);
+
+        Assert.NotNull(focus);
+        Assert.Equal(id, focus!.Node.Id);
+        Assert.Null(GraphApi.BuildFocus(graph, analysis, doubleDecoded));
+    }
 }

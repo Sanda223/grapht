@@ -31,7 +31,7 @@ public static class ViewServer
         app.MapGet("/api/node/{id}", (string id) =>
         {
             var snapshot = service.Current;
-            var focus = GraphApi.BuildFocus(snapshot.Graph, snapshot.Analysis, Uri.UnescapeDataString(id));
+            var focus = GraphApi.BuildFocus(snapshot.Graph, snapshot.Analysis, id);
             return focus is null ? Results.NotFound(new { error = $"No node with id \"{id}\"" }) : Results.Ok(focus);
         });
 
