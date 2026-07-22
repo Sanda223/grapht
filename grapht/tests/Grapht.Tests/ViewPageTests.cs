@@ -12,7 +12,7 @@ public class ViewPageTests
     {
         const string chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
         if (!File.Exists(chrome) || !OperatingSystem.IsMacOS())
-            return; // headless Chrome unavailable — skip rather than fail the suite
+            Assert.Skip("headless Chrome unavailable — this is the only test that runs the front end");
 
         var port = 5099;
         var repoRoot = TestPaths.RepoRoot;
