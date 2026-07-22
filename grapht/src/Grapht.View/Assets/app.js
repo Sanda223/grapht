@@ -29,6 +29,8 @@ const cy = cytoscape({
   layout: { name: 'cose', animate: false },
 });
 
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 async function json(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
@@ -90,7 +92,6 @@ function renderInspector() {
     const key = `${n.direction === 'out' ? '' : 'Incoming '}${n.relation}`;
     (groups[key] ||= []).push(n);
   }
-  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   el.inspector.innerHTML = `
     <h3>${esc(f.node.label)}</h3>
     <div class="kind">${esc(f.node.type ?? 'node')} · ${esc(f.node.communityLabel)} · degree ${f.node.degree}</div>
@@ -109,7 +110,7 @@ function renderBreadcrumb() {
   const parts = ['<button data-i="-1">Overview</button>'];
   state.trail.forEach((id, i) => {
     const label = i === state.trail.length - 1 && state.focus ? state.focus.node.label : id.split(/[.\/]/).pop();
-    parts.push(`<button data-i="${i}">${label}</button>`);
+    parts.push(`<button data-i="${i}">${esc(label)}</button>`);
   });
   el.breadcrumb.innerHTML = parts.join(' <span class="muted">›</span> ');
   el.breadcrumb.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
@@ -126,8 +127,8 @@ function renderRelationFilters() {
   for (const n of state.focus.neighbours) counts[n.relation] = (counts[n.relation] || 0) + 1;
   el.relationFilters.innerHTML = Object.entries(counts).sort().map(([rel, count]) => `
     <label class="filter">
-      <input type="checkbox" data-rel="${rel}" ${state.hiddenRelations.has(rel) ? '' : 'checked'}>
-      <span>${rel}</span><span class="count">${count}</span>
+      <input type="checkbox" data-rel="${esc(rel)}" ${state.hiddenRelations.has(rel) ? '' : 'checked'}>
+      <span>${esc(rel)}</span><span class="count">${count}</span>
     </label>`).join('');
   el.relationFilters.querySelectorAll('input').forEach(i => i.addEventListener('change', () => {
     if (i.checked) state.hiddenRelations.delete(i.dataset.rel);
@@ -161,7 +162,7 @@ async function searchFor(term) {
     el.search.value = '';
   } catch (err) {
     el.suggestions.hidden = false;
-    el.suggestions.innerHTML = `<button disabled>${err.message}</button>`;
+    el.suggestions.innerHTML = `<button disabled>${esc(err.message)}</button>`;
   }
 }
 
@@ -177,5 +178,5 @@ document.addEventListener('keydown', e => {
 });
 
 loadOverview().catch(err => {
-  el.inspector.innerHTML = `<p class="empty">Could not load the graph: ${err.message}</p>`;
+  el.inspector.innerHTML = `<p class="empty">Could not load the graph: ${esc(err.message)}</p>`;
 });
