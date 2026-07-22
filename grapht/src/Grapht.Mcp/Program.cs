@@ -1,3 +1,4 @@
+using Grapht.Core;
 using Grapht.Mcp;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
