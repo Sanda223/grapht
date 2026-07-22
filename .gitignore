@@ -11,7 +11,7 @@ artifacts/
 
 # Tool output
 graphify-out/
-context-graph-out/
+grapht-out/
 nupkg/
 
 # OS / editor

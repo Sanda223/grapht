@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "grapht": {
+      "type": "stdio",
+      "command": "grapht-mcp",
+      "args": ["--solution", "${workspaceFolder}"]
+    }
+  }
+}
