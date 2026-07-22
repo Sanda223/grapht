@@ -50,9 +50,14 @@ public static class GraphApi
         if (!graph.Nodes.TryGetValue(nodeId, out var node))
             return null;
 
+        // A self-loop (source == target) shows up in both OutEdges and InEdges for the same
+        // node, which would otherwise emit two NeighbourDto rows for one edge — and, since the
+        // front end keys Cytoscape elements by "from|to|relation", two identical ids for the
+        // same self-loop. Treat a self-loop as outgoing only, so it produces exactly one row.
         var neighbours = graph.OutEdges(nodeId)
             .Select(e => (Edge: e, Other: e.Target, Direction: "out"))
-            .Concat(graph.InEdges(nodeId).Select(e => (Edge: e, Other: e.Source, Direction: "in")))
+            .Concat(graph.InEdges(nodeId).Where(e => e.Source != e.Target)
+                .Select(e => (Edge: e, Other: e.Source, Direction: "in")))
             .Where(x => graph.Nodes.ContainsKey(x.Other))
             .OrderBy(x => x.Direction, StringComparer.Ordinal)
             .ThenBy(x => x.Other, StringComparer.Ordinal)

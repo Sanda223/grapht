@@ -58,6 +58,23 @@ public class ViewApiTests : IClassFixture<BuiltGraphFixture>
     }
 
     [Fact]
+    public void FocusCollapsesSelfLoopToOneOutgoingNeighbourRow()
+    {
+        // Fixture fact: SampleApp.Services.OrderService --bound_to--> itself. Enumerating
+        // OutEdges and InEdges separately would otherwise emit this edge twice (once per
+        // direction) with an identical node reference — collapse it to a single "out" row.
+        const string id = "SampleApp.Services.OrderService";
+        Assert.Contains(_graph.Edges, e => e.Source == id && e.Target == id);
+
+        var focus = GraphApi.BuildFocus(_graph, _analysis, id);
+
+        Assert.NotNull(focus);
+        var selfRows = focus!.Neighbours.Where(n => n.Node.Id == id).ToList();
+        var selfRow = Assert.Single(selfRows);
+        Assert.Equal("out", selfRow.Direction);
+    }
+
+    [Fact]
     public void FocusResolvesIdContainingPercentEncodedSequenceWithoutDoubleDecoding()
     {
         // Route values arrive at BuildFocus already decoded once by ASP.NET Core's routing

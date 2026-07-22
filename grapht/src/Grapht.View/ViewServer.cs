@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Grapht.Core;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -8,8 +9,14 @@ namespace Grapht.View;
 
 /// <summary>Loopback-only web host over a live GraphService. Binds 127.0.0.1 explicitly —
 /// this serves source code from disk and must never be reachable off-machine.</summary>
-public static class ViewServer
+public static partial class ViewServer
 {
+    // Matches only the literal escape sequence for '/' (case-insensitive, as clients may send
+    // either %2F or %2f) — never a bare '/' or any other escape.
+    [GeneratedRegex("%2F", RegexOptions.IgnoreCase)]
+    private static partial Regex SlashPattern();
+    private static readonly Regex Slash = SlashPattern();
+
     public static async Task RunAsync(string solutionPath, int port, bool openBrowser, CancellationToken ct = default)
     {
         using var service = new GraphService(solutionPath);
@@ -30,9 +37,16 @@ public static class ViewServer
 
         app.MapGet("/api/node/{id}", (string id) =>
         {
+            // ASP.NET Core routing decodes most percent-escapes before the handler ever sees
+            // them, but deliberately leaves %2F (encoded '/') alone — decoding it there would
+            // let a client forge extra path segments. A node id may legitimately contain '/'
+            // (file and route ids), so undo that one escape here, and only that one: a blanket
+            // Uri.UnescapeDataString would double-decode ids that legitimately contain a
+            // literal "%20" sequence (see FocusResolvesIdContainingPercentEncodedSequence...).
+            var decodedId = Slash.Replace(id, "/");
             var snapshot = service.Current;
-            var focus = GraphApi.BuildFocus(snapshot.Graph, snapshot.Analysis, id);
-            return focus is null ? Results.NotFound(new { error = $"No node with id \"{id}\"" }) : Results.Ok(focus);
+            var focus = GraphApi.BuildFocus(snapshot.Graph, snapshot.Analysis, decodedId);
+            return focus is null ? Results.NotFound(new { error = $"No node with id \"{decodedId}\"" }) : Results.Ok(focus);
         });
 
         app.MapGet("/", () => Results.Content(Asset("index.html"), "text/html; charset=utf-8"));
