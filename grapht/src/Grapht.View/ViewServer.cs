@@ -49,6 +49,13 @@ public static partial class ViewServer
             return focus is null ? Results.NotFound(new { error = $"No node with id \"{decodedId}\"" }) : Results.Ok(focus);
         });
 
+        app.MapGet("/api/search", (string? q, int? limit) =>
+        {
+            var snapshot = service.Current;
+            return Results.Ok(GraphApi.Search(snapshot.Graph, snapshot.Analysis, q ?? "",
+                Math.Clamp(limit ?? 10, 1, 50)));
+        });
+
         app.MapGet("/", () => Results.Content(Asset("index.html"), "text/html; charset=utf-8"));
         app.MapGet("/app.css", () => Results.Content(Asset("app.css"), "text/css; charset=utf-8"));
         app.MapGet("/app.js", () => Results.Content(Asset("app.js"), "text/javascript; charset=utf-8"));
