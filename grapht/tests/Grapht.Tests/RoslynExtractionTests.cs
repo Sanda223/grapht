@@ -94,11 +94,11 @@ public sealed class BuiltGraphFixture : IAsyncLifetime
 {
     public KnowledgeGraph Graph { get; private set; } = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         var result = await GraphPipeline.BuildAsync(TestPaths.SampleAppSolution);
         Graph = result.Graph;
     }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

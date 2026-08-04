@@ -30,9 +30,20 @@ grapht explain "IBasketService"
 grapht stats
 grapht diff base.json head.json   # structural diff between two builds (PR-ready markdown)
 grapht report-usage               # summarize MCP tool usage from the query log
+grapht view                       # interactive viewer at http://127.0.0.1:5050
 ```
 
 `graph.html` is a single self-contained file (vendored vis-network, zero network access) — open it in any browser for the clickable community-colored map.
+
+## Interactive viewer
+
+`grapht view [path] [--port N] [--no-open]` serves a live graph viewer on `127.0.0.1` (loopback only, never reachable off-machine). It lands on a community overview — bubbles sized by membership — and lets you search or click a node to focus on it and its neighbours, click a neighbour to expand outward, and use the breadcrumb to navigate back. Relation filters show live counts, and there's a light/dark theme toggle.
+
+`--port` picks the port (default `5050`); `--no-open` skips launching a browser. Unlike `grapht build`, which writes graph.json once, `view` keeps a `GraphService` running and re-extracts on file changes, so the graph stays current as you edit.
+
+Use `graph.html` when you want a shareable, offline artifact — email it, attach it to a CI run. Use `view` when you're working in a solution and want a live, clickable map of it; it does not replace `graph.html`, and `grapht build` is unaffected.
+
+Note: search currently resolves exact node ids only (e.g. `eShop.WebApp.BasketState.CheckoutAsync`, not `CheckoutAsync`) — a fuzzy search endpoint is planned for a follow-up.
 
 ## Copilot integration
 

@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Grapht.Core;
+using Grapht.View;
 
 var pathArg = new Argument<string>("path") { Description = "Directory, .sln/.slnx, or .csproj", DefaultValueFactory = _ => "." };
 
@@ -178,6 +179,23 @@ diffCmd.SetAction(parseResult =>
     return 0;
 });
 
+var viewPathArg = new Argument<string>("path") { Description = "Solution or directory to view", DefaultValueFactory = _ => "." };
+var portOption = new Option<int>("--port") { Description = "Port to serve on", DefaultValueFactory = _ => 5050 };
+var noOpenOption = new Option<bool>("--no-open") { Description = "Do not open a browser" };
+var viewCmd = new Command("view", "Serve an interactive graph viewer on localhost");
+viewCmd.Arguments.Add(viewPathArg);
+viewCmd.Options.Add(portOption);
+viewCmd.Options.Add(noOpenOption);
+viewCmd.SetAction(async (parseResult, ct) =>
+{
+    await ViewServer.RunAsync(
+        parseResult.GetValue(viewPathArg)!,
+        parseResult.GetValue(portOption),
+        !parseResult.GetValue(noOpenOption),
+        ct);
+    return 0;
+});
+
 var root = new RootCommand("grapht: knowledge graph for .NET solutions");
 root.Subcommands.Add(buildCmd);
 root.Subcommands.Add(queryCmd);
@@ -186,4 +204,5 @@ root.Subcommands.Add(explainCmd);
 root.Subcommands.Add(statsCmd);
 root.Subcommands.Add(usageCmd);
 root.Subcommands.Add(diffCmd);
+root.Subcommands.Add(viewCmd);
 return await root.Parse(args).InvokeAsync();

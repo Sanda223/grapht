@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Grapht.Core\Grapht.Core.csproj" />
+    <ProjectReference Include="..\Grapht.View\Grapht.View.csproj" />
   </ItemGroup>
 
   <ItemGroup>

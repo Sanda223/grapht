@@ -1,7 +1,6 @@
-using Grapht.Core;
 using Microsoft.CodeAnalysis.Text;
 
-namespace Grapht.Mcp;
+namespace Grapht.Core;
 
 /// <summary>Owns the in-memory graph. Loads the solution once, watches the workspace, and
 /// incrementally re-extracts changed files (debounced), so tools never see a stale graph.

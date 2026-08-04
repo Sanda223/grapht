@@ -3,6 +3,7 @@
     <Project Path="src/Grapht.Cli/Grapht.Cli.csproj" />
     <Project Path="src/Grapht.Core/Grapht.Core.csproj" />
     <Project Path="src/Grapht.Mcp/Grapht.Mcp.csproj" />
+    <Project Path="src/Grapht.View/Grapht.View.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Grapht.Tests/Grapht.Tests.csproj" />
