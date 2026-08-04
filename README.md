@@ -39,7 +39,7 @@ grapht view                       # interactive viewer at http://127.0.0.1:5050
 
 `grapht view [path] [--port N] [--no-open]` serves a live **3D** graph viewer on `127.0.0.1` (loopback only, never reachable off-machine). It lands on a community overview — orbiting bubbles sized by membership — and lets you search (fuzzy typeahead: type `OrderService`, not the fully-qualified id) or click a community to focus a node and its neighbours, then click neighbours to grow the scene outward; already-explored nodes stay in place and dim instead of disappearing. Drag to rotate, scroll to zoom; the idle auto-orbit can be toggled in the header. Relation filters show live counts, and there's a light/dark theme toggle.
 
-`--port` picks the port (default `5050`); `--no-open` skips launching a browser. Unlike `grapht build`, which writes graph.json once, `view` keeps a `GraphService` running and re-extracts on file changes, so the graph stays current as you edit.
+`--port` picks the port (default `5050`); `--no-open` skips launching a browser; `--graph path/to/graph.json` serves a prebuilt export instead of extracting a solution (communities stored in the file are kept, and there's no file watching — the file is read once). Unlike `grapht build`, which writes graph.json once, `view` keeps a `GraphService` running and re-extracts on file changes, so the graph stays current as you edit.
 
 Use `graph.html` when you want a shareable, offline artifact — email it, attach it to a CI run. Use `view` when you're working in a solution and want a live, clickable map of it; it does not replace `graph.html`, and `grapht build` is unaffected.
 

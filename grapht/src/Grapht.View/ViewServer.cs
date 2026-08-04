@@ -23,7 +23,25 @@ public static partial class ViewServer
         Console.Error.WriteLine("grapht: building graph…");
         await service.InitializeAsync(ct);
         Console.Error.WriteLine($"grapht: ready ({service.Current.Graph.NodeCount} nodes)");
+        await ServeAsync(() => service.Current, port, openBrowser, ct);
+    }
 
+    /// <summary>Serve a prebuilt graph.json instead of extracting a solution — static by
+    /// nature (no file watcher; the file is read once). Communities stored in the file win
+    /// over a fresh Louvain pass so the viewer matches the export that produced it.</summary>
+    public static async Task RunFromGraphJsonAsync(string graphJsonPath, int port, bool openBrowser, CancellationToken ct = default)
+    {
+        Console.Error.WriteLine($"grapht: loading {graphJsonPath}…");
+        var graph = JsonExporter.Read(graphJsonPath);
+        var communities = Louvain.StoredOrCluster(graph);
+        var analysis = Analyzer.Analyze(graph, communities, Louvain.LabelCommunities(graph, communities));
+        var snapshot = new GraphService.Snapshot(graph, new QueryEngine(graph), analysis);
+        Console.Error.WriteLine($"grapht: ready ({graph.NodeCount} nodes, {communities.Count} communities)");
+        await ServeAsync(() => snapshot, port, openBrowser, ct);
+    }
+
+    private static async Task ServeAsync(Func<GraphService.Snapshot> current, int port, bool openBrowser, CancellationToken ct)
+    {
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
@@ -31,7 +49,7 @@ public static partial class ViewServer
 
         app.MapGet("/api/graph", () =>
         {
-            var snapshot = service.Current;
+            var snapshot = current();
             return Results.Ok(GraphApi.BuildOverview(snapshot.Graph, snapshot.Analysis));
         });
 
@@ -44,14 +62,14 @@ public static partial class ViewServer
             // Uri.UnescapeDataString would double-decode ids that legitimately contain a
             // literal "%20" sequence (see FocusResolvesIdContainingPercentEncodedSequence...).
             var decodedId = Slash.Replace(id, "/");
-            var snapshot = service.Current;
+            var snapshot = current();
             var focus = GraphApi.BuildFocus(snapshot.Graph, snapshot.Analysis, decodedId);
             return focus is null ? Results.NotFound(new { error = $"No node with id \"{decodedId}\"" }) : Results.Ok(focus);
         });
 
         app.MapGet("/api/search", (string? q, int? limit) =>
         {
-            var snapshot = service.Current;
+            var snapshot = current();
             return Results.Ok(GraphApi.Search(snapshot.Graph, snapshot.Analysis, q ?? "",
                 Math.Clamp(limit ?? 10, 1, 50)));
         });

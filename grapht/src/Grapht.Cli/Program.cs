@@ -182,12 +182,28 @@ diffCmd.SetAction(parseResult =>
 var viewPathArg = new Argument<string>("path") { Description = "Solution or directory to view", DefaultValueFactory = _ => "." };
 var portOption = new Option<int>("--port") { Description = "Port to serve on", DefaultValueFactory = _ => 5050 };
 var noOpenOption = new Option<bool>("--no-open") { Description = "Do not open a browser" };
+var viewGraphOption = new Option<string?>("--graph") { Description = "Serve a prebuilt graph.json instead of extracting the solution" };
 var viewCmd = new Command("view", "Serve an interactive graph viewer on localhost");
 viewCmd.Arguments.Add(viewPathArg);
 viewCmd.Options.Add(portOption);
 viewCmd.Options.Add(noOpenOption);
+viewCmd.Options.Add(viewGraphOption);
 viewCmd.SetAction(async (parseResult, ct) =>
 {
+    if (parseResult.GetValue(viewGraphOption) is { } graphJson)
+    {
+        if (!File.Exists(graphJson))
+        {
+            Console.Error.WriteLine($"No graph at {graphJson} — run `grapht build` first.");
+            return 1;
+        }
+        await ViewServer.RunFromGraphJsonAsync(
+            graphJson,
+            parseResult.GetValue(portOption),
+            !parseResult.GetValue(noOpenOption),
+            ct);
+        return 0;
+    }
     await ViewServer.RunAsync(
         parseResult.GetValue(viewPathArg)!,
         parseResult.GetValue(portOption),

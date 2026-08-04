@@ -235,7 +235,7 @@ All query commands operate on `grapht-out/graph.json`; `build` writes `graph.jso
 
 ## 10. View server (`Grapht.View`)
 
-`grapht view [path] [--port N] [--no-open]` serves an interactive graph viewer over HTTP, for working live in a solution rather than sharing a static snapshot.
+`grapht view [path] [--port N] [--no-open] [--graph file]` serves an interactive graph viewer over HTTP, for working live in a solution rather than sharing a static snapshot. With `--graph`, it serves a prebuilt graph.json instead of extracting: `JsonExporter.Read` loads the file, `Louvain.StoredOrCluster` keeps the community assignments persisted in it (fresh `Cluster()` only when the file has none), and no watcher runs — the file is read once.
 
 `GraphService` (moved from `Grapht.Mcp` into `Grapht.Core` in this work, so both servers share one implementation) loads the solution, builds the graph, and watches the workspace exactly as the MCP server does — `ViewServer` just hosts it behind Kestrel instead of stdio.
 
