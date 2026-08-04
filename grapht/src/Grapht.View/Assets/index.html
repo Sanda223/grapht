@@ -7,26 +7,68 @@
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<header>
-  <input id="search" type="search" placeholder="Search types, methods, files…" autocomplete="off" spellcheck="false">
+<div id="canvas"></div>
+<div id="labels" aria-hidden="true"></div>
+
+<header id="topbar" class="glass">
   <div id="brand"><strong>grapht</strong> <span id="counts" class="muted"></span></div>
-  <button id="theme" type="button" title="Toggle theme" aria-label="Toggle theme">◐</button>
+  <div id="searchbox">
+    <input id="search" type="search" placeholder="Search types, methods, files…" autocomplete="off" spellcheck="false">
+    <div id="suggestions" role="listbox" hidden></div>
+  </div>
+  <button id="theme" type="button" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">◐</button>
 </header>
-<main>
-  <aside id="filters">
-    <h2>Relations</h2>
-    <div id="relation-filters"></div>
-  </aside>
-  <section id="canvas-wrap">
-    <div id="canvas"></div>
-    <nav id="breadcrumb" aria-label="Focus history"></nav>
-  </section>
-  <aside id="inspector">
-    <p class="empty">Search for a symbol, or click a community to explore it.</p>
-  </aside>
-</main>
-<div id="suggestions" role="listbox" hidden></div>
-<script src="/cytoscape.min.js"></script>
+
+<aside id="filters-panel" class="glass side-panel left">
+  <div class="panel-head">
+    <h2>Filters</h2>
+    <button type="button" class="icon-btn collapse-btn" data-panel="filters-panel" data-tab="filters-tab" title="Collapse filters" aria-label="Collapse filters">‹</button>
+  </div>
+  <div class="panel-body">
+    <h3>View</h3>
+    <label class="filter">
+      <input type="checkbox" id="hide-unconnected">
+      <span>Hide unconnected</span><span class="count" id="hidden-count"></span>
+    </label>
+    <h3>Relations</h3>
+    <div id="relation-filters"><p class="empty">Focus a node to filter its relations.</p></div>
+  </div>
+</aside>
+<button id="filters-tab" type="button" class="glass edge-tab left" hidden>Filters</button>
+
+<aside id="inspector-panel" class="glass side-panel right">
+  <div class="panel-head">
+    <button type="button" class="icon-btn collapse-btn" data-panel="inspector-panel" data-tab="inspector-tab" title="Collapse details" aria-label="Collapse details">›</button>
+    <h2>Details</h2>
+  </div>
+  <div class="panel-body" id="inspector">
+    <p class="empty">Click a node — or search above — to see what it is and what it touches.</p>
+  </div>
+</aside>
+<button id="inspector-tab" type="button" class="glass edge-tab right" hidden>Details</button>
+
+<nav id="bottombar" class="glass">
+  <div id="breadcrumb" aria-label="Focus history"></div>
+  <div id="viewbar">
+    <button id="whole" type="button" title="Render every node and edge at once" aria-pressed="false">Whole graph</button>
+    <button id="fit" type="button" title="Fit the whole view on screen">Fit</button>
+    <button id="orbit" type="button" title="Toggle slow auto-orbit" aria-pressed="true">Orbit</button>
+  </div>
+</nav>
+
+<div id="welcome" class="glass" hidden>
+  <h1>grapht</h1>
+  <p id="welcome-stats" class="muted"></p>
+  <div id="welcome-actions">
+    <button id="start-community" type="button"><strong>Dive into the largest community</strong><span class="muted"></span></button>
+    <button id="start-hub" type="button"><strong>Jump to a hub node</strong><span class="muted"></span></button>
+    <button id="start-whole" type="button"><strong>See the whole web</strong><span class="muted">every node and edge, all at once</span></button>
+    <button id="start-search" type="button"><strong>Search the graph</strong><span class="muted">types, methods, files — as you type</span></button>
+  </div>
+  <button id="welcome-close" type="button">Explore on my own</button>
+</div>
+
+<script src="/3d-force-graph.min.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

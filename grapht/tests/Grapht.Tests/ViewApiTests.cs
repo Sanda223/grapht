@@ -75,6 +75,83 @@ public class ViewApiTests : IClassFixture<BuiltGraphFixture>
     }
 
     [Fact]
+    public void OverviewTopMemberIdsAlignWithTopMemberLabelsAndResolve()
+    {
+        var overview = GraphApi.BuildOverview(_graph, _analysis);
+
+        Assert.All(overview.Communities, c =>
+        {
+            Assert.Equal(c.TopMembers.Count, c.TopMemberIds.Count);
+            for (var i = 0; i < c.TopMemberIds.Count; i++)
+            {
+                Assert.True(_graph.Nodes.ContainsKey(c.TopMemberIds[i]));
+                Assert.Equal(_graph.Nodes[c.TopMemberIds[i]].Label, c.TopMembers[i]);
+            }
+        });
+    }
+
+    [Fact]
+    public void FullReturnsEveryNodeAndEdgeWithCommunityColors()
+    {
+        var full = GraphApi.BuildFull(_graph);
+
+        Assert.Equal(_graph.NodeCount, full.Nodes.Count);
+        Assert.Equal(_graph.EdgeCount, full.Edges.Count);
+        Assert.All(full.Nodes, n => Assert.StartsWith("hsl(", n.Color));
+        // deterministic ordering and referential integrity
+        Assert.Equal(full.Nodes.Select(n => n.Id).Order(StringComparer.Ordinal), full.Nodes.Select(n => n.Id));
+        var ids = full.Nodes.Select(n => n.Id).ToHashSet();
+        Assert.All(full.Edges, e =>
+        {
+            Assert.Contains(e.Source, ids);
+            Assert.Contains(e.Target, ids);
+        });
+    }
+
+    [Fact]
+    public void SearchRanksExactLabelMatchFirst()
+    {
+        // Fixture fact: SampleApp.Services.OrderService exists and its label is "OrderService".
+        var hits = GraphApi.Search(_graph, _analysis, "OrderService");
+
+        Assert.NotEmpty(hits);
+        Assert.Equal("SampleApp.Services.OrderService", hits[0].Id);
+        Assert.True(hits.Count <= 10);
+    }
+
+    [Fact]
+    public void SearchIsCaseInsensitiveAndMatchesSubstrings()
+    {
+        var hits = GraphApi.Search(_graph, _analysis, "orderserv");
+
+        Assert.NotEmpty(hits);
+        Assert.All(hits, h => Assert.True(
+            h.Label.Contains("orderserv", StringComparison.OrdinalIgnoreCase) ||
+            h.Id.Contains("orderserv", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public void SearchFindsMethodsWithoutTheirParenthesesSuffix()
+    {
+        // Method labels carry a "()" suffix; a user types the bare name.
+        var method = _graph.Nodes.Values.First(n => n.Label.EndsWith("()", StringComparison.Ordinal));
+        var bare = method.Label[..^2];
+
+        var hits = GraphApi.Search(_graph, _analysis, bare);
+
+        Assert.Contains(hits, h => h.Id == method.Id);
+    }
+
+    [Fact]
+    public void SearchRespectsLimitAndRejectsBlankQueries()
+    {
+        Assert.Empty(GraphApi.Search(_graph, _analysis, "   "));
+        Assert.Empty(GraphApi.Search(_graph, _analysis, ""));
+        var hits = GraphApi.Search(_graph, _analysis, "Sample", limit: 3);
+        Assert.True(hits.Count <= 3);
+    }
+
+    [Fact]
     public void FocusResolvesIdContainingPercentEncodedSequenceWithoutDoubleDecoding()
     {
         // Route values arrive at BuildFocus already decoded once by ASP.NET Core's routing

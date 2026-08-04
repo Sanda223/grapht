@@ -235,24 +235,23 @@ All query commands operate on `grapht-out/graph.json`; `build` writes `graph.jso
 
 ## 10. View server (`Grapht.View`)
 
-`grapht view [path] [--port N] [--no-open]` serves an interactive graph viewer over HTTP, for working live in a solution rather than sharing a static snapshot.
+`grapht view [path] [--port N] [--no-open] [--graph file]` serves an interactive graph viewer over HTTP, for working live in a solution rather than sharing a static snapshot. With `--graph`, it serves a prebuilt graph.json instead of extracting: `JsonExporter.Read` loads the file, `Louvain.StoredOrCluster` keeps the community assignments persisted in it (fresh `Cluster()` only when the file has none), and no watcher runs — the file is read once.
 
 `GraphService` (moved from `Grapht.Mcp` into `Grapht.Core` in this work, so both servers share one implementation) loads the solution, builds the graph, and watches the workspace exactly as the MCP server does — `ViewServer` just hosts it behind Kestrel instead of stdio.
 
 **Host**: `ViewServer.RunAsync` builds a `WebApplication` bound explicitly to `http://127.0.0.1:{port}` (default `5050`) — loopback only, since this serves source-derived data and must never be reachable off-machine. It opens a browser at that URL unless `--no-open` is passed.
 
-**Endpoints**, both shaped by pure functions in `GraphApi` (no I/O, directly testable):
+**Endpoints**, all shaped by pure functions in `GraphApi` (no I/O, directly testable):
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/graph` | `OverviewDto` — one `CommunityDto` per community (id, label, size, color, top members by degree) plus `MetaEdgeDto`s for cross-community edge counts. The community-level view; the full graph is never sent to the browser. |
+| `GET /api/graph` | `OverviewDto` — one `CommunityDto` per community (id, label, size, color, top members by degree as parallel `topMembers`/`topMemberIds` lists) plus `MetaEdgeDto`s for cross-community edge counts. The community-level view; the full graph is never sent to the browser. |
 | `GET /api/node/{id}` | `FocusDto` — one `NodeDto` (id, label, type, span, community, degree, color) plus a `NeighbourDto` list (each neighbour's `NodeDto`, the relation, direction, and confidence). 404 if `id` doesn't match a node. |
+| `GET /api/search?q={term}&limit={n}` | ranked `NodeDto` list from `GraphApi.Search` — exact (label, id, or label+`()`) beats prefix beats substring, higher degree first within a tier. Blank `q` returns `[]`; `limit` clamps to 1–50, default 10. |
 
-**Assets**: `index.html`, `app.css`, `app.js`, and a vendored `cytoscape.min.js` live under `Grapht.View/Assets/` and are embedded resources, served back over HTTP from `ViewServer` (`GET /`, `/app.css`, `/app.js`, `/cytoscape.min.js`) — no separate static file server, no CDN dependency.
+**Assets**: `index.html`, `app.css`, `app.js`, and a vendored `3d-force-graph.min.js` (v1.80.0, MIT — a self-contained UMD with three.js compiled in) live under `Grapht.View/Assets/` and are embedded resources, served back over HTTP from `ViewServer` (`GET /`, `/app.css`, `/app.js`, `/3d-force-graph.min.js`) — no separate static file server, no CDN dependency.
 
-**UI model**: land on the community overview, search or click to focus one node and its neighbours, click a neighbour to expand, breadcrumb back, relation-filter checkboxes with live counts, light/dark theme toggle.
-
-**Known limitation**: search and overview-node clicks resolve against `/api/node/{id}` directly, which matches exact node ids only — the overview lists display labels, not the fully-qualified ids the focus endpoint needs, so e.g. `CheckoutAsync` will not resolve to `eShop.WebApp.BasketState.CheckoutAsync`. A fuzzy `/api/search` endpoint over `QueryEngine.ResolveNodeCandidates` is planned for a follow-up rather than shipped here.
+**UI model**: land on the community overview rendered as a 3D force graph, search (typeahead over `/api/search`) or click a community to focus its top member, click a neighbour to expand, breadcrumb back, relation-filter checkboxes with live counts, light/dark theme toggle. The 3D canvas is *accretive*: focusing another node grows the scene (new nodes seed at their anchor's position; out-of-neighbourhood nodes dim rather than disappear), so positions stay stable as you explore. Labels are an HTML overlay projected through `graph2ScreenCoords` (capped at 60, by degree). An idle auto-orbit supplies the motion parallax that makes 3D graphs legible (see `docs/specs/2026-08-04-3d-viewer-research.md`); it pauses while you interact, has a header toggle, and is off under `prefers-reduced-motion`.
 
 This does not replace `graph.html` (§9, `HtmlExporter`), which remains the shareable offline artifact; `view` is the live counterpart for working in a solution.
 

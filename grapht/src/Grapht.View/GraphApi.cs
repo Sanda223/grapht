@@ -2,10 +2,13 @@ using Grapht.Core;
 
 namespace Grapht.View;
 
-public sealed record CommunityDto(int Id, string Label, int Size, string Color, List<string> TopMembers);
+public sealed record CommunityDto(int Id, string Label, int Size, string Color, List<string> TopMembers, List<string> TopMemberIds);
 public sealed record MetaEdgeDto(int Source, int Target, int Weight);
 public sealed record OverviewDto(List<CommunityDto> Communities, List<MetaEdgeDto> Edges, int NodeCount, int EdgeCount);
 public sealed record NodeDto(string Id, string Label, string? Type, string? Span, int Community, string CommunityLabel, int Degree, string Color);
+public sealed record FullNodeDto(string Id, string Label, string? Type, int Community, int Degree, string Color);
+public sealed record FullEdgeDto(string Source, string Target, string Relation, string Confidence);
+public sealed record FullDto(List<FullNodeDto> Nodes, List<FullEdgeDto> Edges);
 public sealed record NeighbourDto(NodeDto Node, string Relation, string Direction, string Confidence);
 public sealed record FocusDto(NodeDto Node, List<NeighbourDto> Neighbours);
 
@@ -18,14 +21,18 @@ public static class GraphApi
     /// sent to the browser.</summary>
     public static OverviewDto BuildOverview(KnowledgeGraph graph, Analysis analysis)
     {
-        var communities = analysis.Communities.OrderBy(kv => kv.Key).Select(kv => new CommunityDto(
-            kv.Key,
-            analysis.CommunityLabels[kv.Key],
-            kv.Value.Count,
-            Color(kv.Key),
-            kv.Value.OrderByDescending(graph.Degree).ThenBy(id => id, StringComparer.Ordinal)
-                    .Take(8).Select(id => graph.Nodes[id].Label).ToList()))
-            .ToList();
+        var communities = analysis.Communities.OrderBy(kv => kv.Key).Select(kv =>
+        {
+            var top = kv.Value.OrderByDescending(graph.Degree).ThenBy(id => id, StringComparer.Ordinal)
+                              .Take(8).ToList();
+            return new CommunityDto(
+                kv.Key,
+                analysis.CommunityLabels[kv.Key],
+                kv.Value.Count,
+                Color(kv.Key),
+                top.Select(id => graph.Nodes[id].Label).ToList(),
+                top);
+        }).ToList();
 
         var crossings = new Dictionary<(int, int), int>();
         foreach (var edge in graph.Edges)
@@ -68,6 +75,54 @@ public static class GraphApi
             .ToList();
 
         return new FocusDto(Describe(graph, analysis, node), neighbours);
+    }
+
+    /// <summary>The whole graph, slimmed for rendering: every node and edge, colors and
+    /// degrees precomputed. This is the one deliberate exception to "the full graph is
+    /// never sent" — opt-in via the whole-graph mode, loopback-only, and ~1MB at eShop
+    /// scale. Span/community-label detail still comes from /api/node on selection.</summary>
+    public static FullDto BuildFull(KnowledgeGraph graph)
+    {
+        var nodes = graph.Nodes.Values.OrderBy(n => n.Id, StringComparer.Ordinal)
+            .Select(n => new FullNodeDto(n.Id, n.Label, n.Type, n.Community ?? 0,
+                                         graph.Degree(n.Id), Color(n.Community ?? 0)))
+            .ToList();
+        var edges = graph.Edges
+            .OrderBy(e => e.Source, StringComparer.Ordinal)
+            .ThenBy(e => e.Target, StringComparer.Ordinal)
+            .ThenBy(e => e.Relation, StringComparer.Ordinal)
+            .Select(e => new FullEdgeDto(e.Source, e.Target, e.Relation, e.Confidence))
+            .ToList();
+        return new FullDto(nodes, edges);
+    }
+
+    /// <summary>Ranked search for the viewer's typeahead: exact (label, id, or label+"()")
+    /// beats prefix beats substring; within a tier, higher degree first. Pure, like the
+    /// other builders — the endpoint stays a one-liner.</summary>
+    public static List<NodeDto> Search(KnowledgeGraph graph, Analysis analysis, string query, int limit = 10)
+    {
+        var q = query.Trim();
+        if (q.Length == 0)
+            return [];
+
+        return graph.Nodes.Values
+            .Select(n => (Node: n, Tier: Tier(n)))
+            .Where(x => x.Tier < 3)
+            .OrderBy(x => x.Tier)
+            .ThenByDescending(x => graph.Degree(x.Node.Id))
+            .ThenBy(x => x.Node.Id, StringComparer.Ordinal)
+            .Take(limit)
+            .Select(x => Describe(graph, analysis, x.Node))
+            .ToList();
+
+        int Tier(Node n) =>
+            n.Label.Equals(q, StringComparison.OrdinalIgnoreCase)
+                || n.Id.Equals(q, StringComparison.OrdinalIgnoreCase)
+                || n.Label.Equals(q + "()", StringComparison.OrdinalIgnoreCase) ? 0
+            : n.Label.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 1
+            : n.Label.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || n.Id.Contains(q, StringComparison.OrdinalIgnoreCase) ? 2
+            : 3;
     }
 
     private static NodeDto Describe(KnowledgeGraph graph, Analysis analysis, Node node)

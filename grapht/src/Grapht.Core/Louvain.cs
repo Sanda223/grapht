@@ -91,6 +91,21 @@ public static class Louvain
             .Where(n => n.Community is not null)
             .ToDictionary(n => n.Id, n => n.Community!.Value);
 
+    /// <summary>Rebuild the community table from Node.Community values persisted in a
+    /// graph.json, so a loaded graph keeps the clustering it was built with instead of
+    /// being re-clustered. Falls back to a fresh Cluster() when the file carries no
+    /// assignments at all.</summary>
+    public static Dictionary<int, List<string>> StoredOrCluster(KnowledgeGraph graph)
+    {
+        if (!graph.Nodes.Values.Any(n => n.Community is not null))
+            return Cluster(graph);
+        return graph.Nodes.Values
+            .GroupBy(n => n.Community ?? 0)
+            .OrderBy(g => g.Key)
+            .ToDictionary(g => g.Key,
+                          g => g.Select(n => n.Id).OrderBy(id => id, StringComparer.Ordinal).ToList());
+    }
+
     /// <summary>Name each community after its highest-degree member.</summary>
     public static Dictionary<int, string> LabelCommunities(KnowledgeGraph graph, Dictionary<int, List<string>> communities) =>
         communities.ToDictionary(

@@ -26,7 +26,9 @@ public class ViewPageTests
             var dom = Path.Combine(Path.GetTempPath(), "grapht-view-" + Guid.NewGuid().ToString("N") + ".html");
             var log = dom + ".log";
             using (var chromeProc = Process.Start(new ProcessStartInfo(chrome,
-                $"--headless --disable-gpu --no-sandbox --virtual-time-budget=15000 " +
+                // three.js needs a WebGL context; --disable-gpu would leave headless Chrome
+                // without one, so render through ANGLE's SwiftShader software rasterizer.
+                $"--headless --use-angle=swiftshader --no-sandbox --virtual-time-budget=15000 " +
                 $"--enable-logging=stderr --v=0 --dump-dom http://127.0.0.1:{port}/")
             { RedirectStandardOutput = true, RedirectStandardError = true })!)
             {
@@ -39,8 +41,15 @@ public class ViewPageTests
             Assert.DoesNotContain("Uncaught", console);
             Assert.DoesNotContain("SyntaxError", console);
             var html = File.ReadAllText(dom);
-            Assert.Contains("<canvas", html);     // cytoscape rendered
-            Assert.Contains("nodes", html);       // counts populated from /api/graph
+            Assert.Contains("<canvas", html);                 // three.js WebGL canvas created
+            Assert.Contains("nodes", html);                   // counts populated from /api/graph
+            Assert.Contains("id=\"labels\"", html);           // label overlay present
+            Assert.Contains("id=\"hide-unconnected\"", html); // unconnected filter present
+            Assert.Contains("id=\"welcome\"", html);          // first-load guidance card
+            Assert.Contains("id=\"bottombar\"", html);        // breadcrumb + view controls bar
+            Assert.Contains("id=\"whole\"", html);            // whole-graph mode toggle
+            Assert.Contains("id=\"start-whole\"", html);      // whole-graph door on welcome card
+            Assert.DoesNotContain("cytoscape", html);         // old renderer fully gone
             File.Delete(dom);
             File.Delete(log);
         }
