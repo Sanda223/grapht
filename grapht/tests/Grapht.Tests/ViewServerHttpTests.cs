@@ -74,6 +74,18 @@ public class ViewServerHttpTests : IClassFixture<ViewServerFixture>
     }
 
     [Fact]
+    public async Task ServesVendored3dForceGraphBundle()
+    {
+        var response = await _server.Client.GetAsync(Url("/3d-force-graph.min.js"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.StartsWith("text/javascript", response.Content.Headers.ContentType!.ToString());
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(body.Length > 500_000, "bundle looks truncated");
+        Assert.Contains("ForceGraph3D", body);
+    }
+
+    [Fact]
     public async Task SearchWithoutQueryReturnsEmptyArrayNotAnError()
     {
         var response = await _server.Client.GetAsync(Url("/api/search"));
