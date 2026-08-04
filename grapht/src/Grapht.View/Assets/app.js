@@ -8,13 +8,16 @@ const state = {
   nbhd: null,              // Set of ids in the current focus neighbourhood
   trail: [],
   hiddenRelations: new Set(),
+  hideUnconnected: false,
+  connected: new Set(),    // community node ids with at least one meta-edge
   nodes: new Map(),        // id -> node object; owned by the engine after graphData()
   links: new Map(),        // "from|to|relation" -> link object
 };
 
 const el = {};
 for (const id of ['search', 'suggestions', 'counts', 'inspector', 'breadcrumb',
-                  'relation-filters', 'theme', 'orbit', 'canvas', 'labels'])
+                  'relation-filters', 'theme', 'orbit', 'canvas', 'labels',
+                  'hide-unconnected', 'hidden-count'])
   el[id.replace(/-(.)/g, (_, c) => c.toUpperCase())] = document.getElementById(id);
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -67,8 +70,12 @@ async function loadOverview() {
   for (const c of state.overview.communities)
     state.nodes.set('c' + c.id, { id: 'c' + c.id, cid: c.id, kind: 'community', label: c.label,
                                   color: c.color, val: Math.max(2, c.size / 3) });
-  for (const e of state.overview.edges)
+  state.connected = new Set();
+  for (const e of state.overview.edges) {
     state.links.set(`c${e.source}|c${e.target}`, { source: 'c' + e.source, target: 'c' + e.target, weight: e.weight });
+    state.connected.add('c' + e.source);
+    state.connected.add('c' + e.target);
+  }
   el.counts.textContent = `${state.overview.nodeCount.toLocaleString()} nodes · ${state.overview.edgeCount.toLocaleString()} edges`;
   pushData();
   Graph.nodeColor(nodeColor);
@@ -132,10 +139,21 @@ function hasVisibleLink(id) {
   return false;
 }
 
+function nodeVisible(n) {
+  if (n.kind === 'community')
+    return !state.hideUnconnected || state.connected.has(n.id);
+  if (n.id === state.focusId || hasVisibleLink(n.id))
+    return true;
+  // Trail nodes normally linger for orientation; "hide unconnected" culls them too
+  // once filters have taken their last visible edge.
+  return !state.hideUnconnected && state.trail.includes(n.id);
+}
+
 function applyFilters() {
   Graph.linkVisibility(l => !l.relation || !state.hiddenRelations.has(l.relation));
-  Graph.nodeVisibility(n => n.kind === 'community' || n.id === state.focusId ||
-                            state.trail.includes(n.id) || hasVisibleLink(n.id));
+  Graph.nodeVisibility(nodeVisible);
+  const hidden = [...state.nodes.values()].filter(n => !nodeVisible(n)).length;
+  el.hiddenCount.textContent = hidden ? String(hidden) : '';
   rebuildLabels();
 }
 
@@ -148,10 +166,10 @@ function visibleNeighbours() {
 let labelled = [];
 
 function labelSet() {
-  if (state.mode === 'overview') return [...state.nodes.values()];
+  if (state.mode === 'overview') return [...state.nodes.values()].filter(nodeVisible);
   if (!state.nbhd) return [];
   return [...state.nodes.values()]
-    .filter(n => n.id === state.focusId || (state.nbhd.has(n.id) && hasVisibleLink(n.id)))
+    .filter(n => n.id === state.focusId || (state.nbhd.has(n.id) && nodeVisible(n) && hasVisibleLink(n.id)))
     .sort((a, b) => (b.degree ?? 0) - (a.degree ?? 0))
     .slice(0, 60);
 }
@@ -229,6 +247,11 @@ function renderRelationFilters() {
     renderInspector();
   }));
 }
+
+el.hideUnconnected.addEventListener('change', () => {
+  state.hideUnconnected = el.hideUnconnected.checked;
+  applyFilters();
+});
 
 // --- search (backed by /api/search) ---
 

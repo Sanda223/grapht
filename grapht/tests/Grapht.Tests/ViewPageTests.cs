@@ -44,6 +44,7 @@ public class ViewPageTests
             Assert.Contains("<canvas", html);                 // three.js WebGL canvas created
             Assert.Contains("nodes", html);                   // counts populated from /api/graph
             Assert.Contains("id=\"labels\"", html);           // label overlay present
+            Assert.Contains("id=\"hide-unconnected\"", html); // unconnected filter present
             Assert.DoesNotContain("cytoscape", html);         // old renderer fully gone
             File.Delete(dom);
             File.Delete(log);
