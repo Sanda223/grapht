@@ -10,14 +10,16 @@ const state = {
   hiddenRelations: new Set(),
   hideUnconnected: false,
   connected: new Set(),    // community node ids with at least one meta-edge
+  welcomed: false,         // welcome card shown and dismissed once per session
   nodes: new Map(),        // id -> node object; owned by the engine after graphData()
   links: new Map(),        // "from|to|relation" -> link object
 };
 
 const el = {};
 for (const id of ['search', 'suggestions', 'counts', 'inspector', 'breadcrumb',
-                  'relation-filters', 'theme', 'orbit', 'canvas', 'labels',
-                  'hide-unconnected', 'hidden-count'])
+                  'relation-filters', 'theme', 'orbit', 'fit', 'canvas', 'labels',
+                  'hide-unconnected', 'hidden-count', 'welcome', 'welcome-stats',
+                  'start-community', 'start-hub', 'start-search', 'welcome-close'])
   el[id.replace(/-(.)/g, (_, c) => c.toUpperCase())] = document.getElementById(id);
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -44,7 +46,9 @@ const Graph = ForceGraph3D({ controlType: 'orbit' })(el.canvas)
   .linkWidth(l => l.weight ? Math.min(4, Math.sqrt(l.weight)) : 1)
   .linkDirectionalArrowLength(l => l.weight ? 0 : 3)   // meta-edges are undirected
   .linkDirectionalArrowRelPos(1)
+  .onNodeHover(n => { el.canvas.style.cursor = n ? 'pointer' : ''; })
   .onNodeClick(node => {
+    dismissWelcome();
     if (node.kind === 'community') {
       const c = state.overview.communities.find(x => x.id === node.cid);
       if (c && c.topMemberIds.length) focusNode(c.topMemberIds[0]);
@@ -52,7 +56,7 @@ const Graph = ForceGraph3D({ controlType: 'orbit' })(el.canvas)
     }
     focusNode(node.id);
   })
-  .onBackgroundClick(() => { el.suggestions.hidden = true; });
+  .onBackgroundClick(() => { dismissWelcome(); hideSuggestions(); });
 
 // One-shot "when the simulation settles" hook — used for zoomToFit / camera flights.
 let settleCb = null;
@@ -82,8 +86,9 @@ async function loadOverview() {
   applyFilters();
   settleThen(() => Graph.zoomToFit(600, 60));
   renderBreadcrumb();
-  el.inspector.innerHTML = '<p class="empty">Search for a symbol, or click a community to explore it.</p>';
-  el.relationFilters.innerHTML = '';
+  el.inspector.innerHTML = '<p class="empty">Click a node — or search above — to see what it is and what it touches.</p>';
+  el.relationFilters.innerHTML = '<p class="empty">Focus a node to filter its relations.</p>';
+  showWelcome();
 }
 
 function addNode(dto, val, near) {
@@ -98,6 +103,7 @@ function addNode(dto, val, near) {
 }
 
 async function focusNode(id) {
+  dismissWelcome();
   const focus = await json('/api/node/' + encodeURIComponent(id));
   if (state.mode === 'overview') { state.nodes.clear(); state.links.clear(); }  // leave the meta-graph
   state.mode = 'focus'; state.focus = focus; state.focusId = focus.node.id;
@@ -126,6 +132,42 @@ function flyTo(id) {
   const r = Math.hypot(n.x, n.y, n.z) || 1, k = 1 + 130 / r;
   Graph.cameraPosition({ x: n.x * k, y: n.y * k, z: n.z * k }, n, 800);
 }
+
+// --- welcome card: three concrete ways in, shown once per session ---
+
+function showWelcome() {
+  if (state.welcomed) return;
+  const o = state.overview;
+  el.welcomeStats.textContent =
+    `${o.nodeCount.toLocaleString()} nodes · ${o.edgeCount.toLocaleString()} edges · ${o.communities.length} communities`;
+
+  const largest = [...o.communities].sort((a, b) => b.size - a.size)[0];
+  const crossWeight = new Map();
+  for (const e of o.edges) {
+    crossWeight.set(e.source, (crossWeight.get(e.source) || 0) + e.weight);
+    crossWeight.set(e.target, (crossWeight.get(e.target) || 0) + e.weight);
+  }
+  const byCross = [...o.communities].sort((a, b) => (crossWeight.get(b.id) || 0) - (crossWeight.get(a.id) || 0));
+  // Two distinct doors in: if the largest community is also the busiest, offer the runner-up.
+  const busiest = byCross.find(c => c.id !== largest?.id) ?? byCross[0];
+
+  wire(el.startCommunity, largest, c => `${c.label} · ${c.size} nodes`);
+  wire(el.startHub, busiest, c => `${c.topMembers[0]} · busiest neighbourhood`);
+  el.welcome.hidden = false;
+
+  function wire(btn, community, sub) {
+    if (!community || !community.topMemberIds.length) { btn.hidden = true; return; }
+    btn.querySelector('.muted').textContent = sub(community);
+    btn.onclick = () => focusNode(community.topMemberIds[0]);
+  }
+}
+
+function dismissWelcome() {
+  if (!state.welcomed) { state.welcomed = true; el.welcome.hidden = true; }
+}
+
+el.startSearch.addEventListener('click', () => { dismissWelcome(); el.search.focus(); });
+el.welcomeClose.addEventListener('click', dismissWelcome);
 
 // --- relation filters (hide links; hide nodes left with no visible link) ---
 
@@ -161,27 +203,45 @@ function visibleNeighbours() {
   return state.focus.neighbours.filter(n => !state.hiddenRelations.has(n.relation));
 }
 
-// --- HTML label overlay (the UMD bundle exposes no THREE, so no sprite text) ---
+el.hideUnconnected.addEventListener('change', () => {
+  state.hideUnconnected = el.hideUnconnected.checked;
+  applyFilters();
+});
+
+// --- HTML label overlay: tiered by importance, chip-styled, collision-culled ---
+// (the UMD bundle exposes no THREE, so labels live in DOM, not the scene)
 
 let labelled = [];
 
 function labelSet() {
-  if (state.mode === 'overview') return [...state.nodes.values()].filter(nodeVisible);
+  if (state.mode === 'overview')
+    return [...state.nodes.values()].filter(nodeVisible)
+      .sort((a, b) => (b.val ?? 0) - (a.val ?? 0))
+      .slice(0, 80);
   if (!state.nbhd) return [];
   return [...state.nodes.values()]
     .filter(n => n.id === state.focusId || (state.nbhd.has(n.id) && nodeVisible(n) && hasVisibleLink(n.id)))
-    .sort((a, b) => (b.degree ?? 0) - (a.degree ?? 0))
+    .sort((a, b) => a.id === state.focusId ? -1 : b.id === state.focusId ? 1
+                  : (b.degree ?? 0) - (a.degree ?? 0))
     .slice(0, 60);
 }
 
 function rebuildLabels() {
   labelled = labelSet();
-  el.labels.innerHTML = labelled.map(n =>
-    `<div class="lbl${n.id === state.focusId ? ' focus' : ''}">${esc(n.label)}</div>`).join('');
+  el.labels.innerHTML = labelled.map((n, i) => {
+    const tier = n.id === state.focusId ? 'lbl-lg focus' : i < 5 ? 'lbl-lg' : i < 20 ? 'lbl-md' : 'lbl-sm';
+    return `<div class="lbl ${tier}">${esc(n.label)}</div>`;
+  }).join('');
 }
 
+let frame = 0;
 (function labelTick() {
+  frame++;
   const kids = el.labels.children;
+  // Greedy screen-space declutter: labels are already in priority order, so on the
+  // collision frame each label survives only if it misses everything placed before it.
+  const collide = frame % 12 === 0;
+  const placed = [];
   for (let i = 0; i < labelled.length && i < kids.length; i++) {
     const n = labelled[i], div = kids[i];
     if (!Number.isFinite(n.x)) { div.style.display = 'none'; continue; }
@@ -189,11 +249,18 @@ function rebuildLabels() {
     div.style.display = '';
     div.style.left = p.x + 'px';
     div.style.top = p.y + 'px';
+    if (collide) {
+      const w = div.offsetWidth, h = div.offsetHeight;
+      const rect = { l: p.x - w / 2, r: p.x + w / 2, t: p.y + 10, b: p.y + 10 + h };
+      const overlaps = i > 0 && placed.some(q => rect.l < q.r && rect.r > q.l && rect.t < q.b && rect.b > q.t);
+      div.style.visibility = overlaps ? 'hidden' : '';
+      if (!overlaps) placed.push(rect);
+    }
   }
   requestAnimationFrame(labelTick);
 })();
 
-// --- inspector / breadcrumb / filters (ported from the 2D viewer) ---
+// --- inspector / breadcrumb / filters ---
 
 function renderInspector() {
   const f = state.focus;
@@ -220,9 +287,9 @@ function renderBreadcrumb() {
   const parts = ['<button data-i="-1">Overview</button>'];
   state.trail.forEach((id, i) => {
     const label = i === state.trail.length - 1 && state.focus ? state.focus.node.label : id.split(/[.\/]/).pop();
-    parts.push(`<button data-i="${i}">${esc(label)}</button>`);
+    parts.push(`<button data-i="${i}" title="${esc(id)}">${esc(label)}</button>`);
   });
-  el.breadcrumb.innerHTML = parts.join(' <span class="muted">›</span> ');
+  el.breadcrumb.innerHTML = parts.join('<span class="muted">›</span>');
   el.breadcrumb.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
     const i = Number(b.dataset.i);
     if (i < 0) return loadOverview();
@@ -230,6 +297,7 @@ function renderBreadcrumb() {
     state.trail = state.trail.slice(0, i);
     focusNode(id);
   }));
+  el.breadcrumb.scrollLeft = el.breadcrumb.scrollWidth;
 }
 
 function renderRelationFilters() {
@@ -248,12 +316,20 @@ function renderRelationFilters() {
   }));
 }
 
-el.hideUnconnected.addEventListener('change', () => {
-  state.hideUnconnected = el.hideUnconnected.checked;
-  applyFilters();
-});
+// --- collapsible side panels: visible buttons, edge tabs to restore ---
+
+document.querySelectorAll('.collapse-btn').forEach(b => b.addEventListener('click', () => {
+  document.getElementById(b.dataset.panel).hidden = true;
+  document.getElementById(b.dataset.tab).hidden = false;
+}));
+document.querySelectorAll('.edge-tab').forEach(t => t.addEventListener('click', () => {
+  t.hidden = true;
+  document.getElementById(t.id === 'filters-tab' ? 'filters-panel' : 'inspector-panel').hidden = false;
+}));
 
 // --- search (backed by /api/search) ---
+
+function hideSuggestions() { el.suggestions.hidden = true; }
 
 let searchTimer;
 el.search.addEventListener('input', () => {
@@ -262,11 +338,14 @@ el.search.addEventListener('input', () => {
 });
 el.search.addEventListener('keydown', e => {
   if (e.key === 'Enter') el.suggestions.querySelector('button[data-id]')?.click();
-  if (e.key === 'Escape') el.suggestions.hidden = true;
+  if (e.key === 'Escape') hideSuggestions();
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('#searchbox')) hideSuggestions();
 });
 
 async function searchFor(term) {
-  if (term.length < 2) { el.suggestions.hidden = true; return; }
+  if (term.length < 2) { hideSuggestions(); return; }
   const hits = await json('/api/search?q=' + encodeURIComponent(term)).catch(() => []);
   el.suggestions.hidden = false;
   el.suggestions.innerHTML = hits.length
@@ -275,11 +354,15 @@ async function searchFor(term) {
     : '<button disabled>No matches</button>';
   el.suggestions.querySelectorAll('button[data-id]').forEach(b =>
     b.addEventListener('click', () => {
-      el.suggestions.hidden = true;
+      hideSuggestions();
       el.search.value = '';
       focusNode(b.dataset.id);
     }));
 }
+
+// --- view controls (bottom bar) ---
+
+el.fit.addEventListener('click', () => Graph.zoomToFit(600, 60));
 
 // --- orbit (motion parallax is what makes 3D legible — see the research spec) ---
 

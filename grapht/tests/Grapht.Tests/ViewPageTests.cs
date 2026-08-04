@@ -45,6 +45,8 @@ public class ViewPageTests
             Assert.Contains("nodes", html);                   // counts populated from /api/graph
             Assert.Contains("id=\"labels\"", html);           // label overlay present
             Assert.Contains("id=\"hide-unconnected\"", html); // unconnected filter present
+            Assert.Contains("id=\"welcome\"", html);          // first-load guidance card
+            Assert.Contains("id=\"bottombar\"", html);        // breadcrumb + view controls bar
             Assert.DoesNotContain("cytoscape", html);         // old renderer fully gone
             File.Delete(dom);
             File.Delete(log);
