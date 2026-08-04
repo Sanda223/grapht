@@ -19,6 +19,10 @@
     <PackageId>Grapht.Cli</PackageId>
     <Version>0.3.0</Version>
     <Description>Knowledge graph CLI for .NET solutions: build, query, path, explain.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Sanda223/grapht</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Sanda223/grapht</RepositoryUrl>
+    <Authors>Sanda223</Authors>
   </PropertyGroup>
 
 </Project>

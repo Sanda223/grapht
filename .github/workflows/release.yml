@@ -1,0 +1,43 @@
+# PROD stage: pushing a tag like v0.4.0 builds, tests, packs that exact version,
+# and publishes to NuGet.org — gated by the "production" GitHub environment, so
+# the run waits for manual approval before anything leaves the building. Also
+# attaches the .nupkg files to a GitHub Release.
+#
+# One-time wiring: create a NuGet.org API key and save it as the environment
+# secret NUGET_API_KEY on the "production" environment.
+name: Release (PROD)
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  publish-prod:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test
+        run: dotnet test grapht/Grapht.slnx --configuration Release --nologo
+
+      - name: Pack (version from tag)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          dotnet pack grapht/src/Grapht.Cli -c Release -o nupkg -p:Version="$VERSION"
+          dotnet pack grapht/src/Grapht.Mcp -c Release -o nupkg -p:Version="$VERSION"
+
+      - name: Push to NuGet.org
+        run: dotnet nuget push "nupkg/*.nupkg" --source https://api.nuget.org/v3/index.json --api-key "${{ secrets.NUGET_API_KEY }}" --skip-duplicate
+
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" nupkg/*.nupkg --generate-notes

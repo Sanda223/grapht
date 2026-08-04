@@ -19,6 +19,10 @@
     <PackageId>Grapht.Mcp</PackageId>
     <Version>0.3.0</Version>
     <Description>MCP stdio server exposing an always-fresh knowledge graph of a .NET solution to GitHub Copilot.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Sanda223/grapht</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Sanda223/grapht</RepositoryUrl>
+    <Authors>Sanda223</Authors>
   </PropertyGroup>
 
 </Project>

@@ -1,0 +1,35 @@
+# TEST stage: every merge to main automatically publishes prerelease packages
+# (X.Y.Z-preview.N) to GitHub Packages, so the tip of main is always installable
+# for testing without touching the real NuGet.org listing.
+name: Prerelease (TEST)
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish-test:
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test
+        run: dotnet test grapht/Grapht.slnx --configuration Release --nologo
+
+      - name: Pack prerelease
+        run: |
+          VERSION=$(grep -oPm1 '(?<=<Version>)[^<]+' grapht/src/Grapht.Cli/Grapht.Cli.csproj)
+          dotnet pack grapht/src/Grapht.Cli -c Release -o nupkg -p:Version="$VERSION-preview.${{ github.run_number }}"
+          dotnet pack grapht/src/Grapht.Mcp -c Release -o nupkg -p:Version="$VERSION-preview.${{ github.run_number }}"
+
+      - name: Push to GitHub Packages
+        run: dotnet nuget push "nupkg/*.nupkg" --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --api-key "${{ secrets.GITHUB_TOKEN }}" --skip-duplicate
