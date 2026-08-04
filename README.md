@@ -37,7 +37,7 @@ grapht view                       # interactive viewer at http://127.0.0.1:5050
 
 ## Interactive viewer
 
-`grapht view [path] [--port N] [--no-open]` serves a live graph viewer on `127.0.0.1` (loopback only, never reachable off-machine). It lands on a community overview — bubbles sized by membership — and lets you search or click a node to focus on it and its neighbours, click a neighbour to expand outward, and use the breadcrumb to navigate back. Relation filters show live counts, and there's a light/dark theme toggle.
+`grapht view [path] [--port N] [--no-open]` serves a live **3D** graph viewer on `127.0.0.1` (loopback only, never reachable off-machine). It lands on a community overview — orbiting bubbles sized by membership — and lets you search (fuzzy typeahead: type `OrderService`, not the fully-qualified id) or click a community to focus a node and its neighbours, then click neighbours to grow the scene outward; already-explored nodes stay in place and dim instead of disappearing. Drag to rotate, scroll to zoom; the idle auto-orbit can be toggled in the header. Relation filters show live counts, and there's a light/dark theme toggle.
 
 `--port` picks the port (default `5050`); `--no-open` skips launching a browser. Unlike `grapht build`, which writes graph.json once, `view` keeps a `GraphService` running and re-extracts on file changes, so the graph stays current as you edit.
 
