@@ -75,6 +75,22 @@ public class ViewApiTests : IClassFixture<BuiltGraphFixture>
     }
 
     [Fact]
+    public void OverviewTopMemberIdsAlignWithTopMemberLabelsAndResolve()
+    {
+        var overview = GraphApi.BuildOverview(_graph, _analysis);
+
+        Assert.All(overview.Communities, c =>
+        {
+            Assert.Equal(c.TopMembers.Count, c.TopMemberIds.Count);
+            for (var i = 0; i < c.TopMemberIds.Count; i++)
+            {
+                Assert.True(_graph.Nodes.ContainsKey(c.TopMemberIds[i]));
+                Assert.Equal(_graph.Nodes[c.TopMemberIds[i]].Label, c.TopMembers[i]);
+            }
+        });
+    }
+
+    [Fact]
     public void SearchRanksExactLabelMatchFirst()
     {
         // Fixture fact: SampleApp.Services.OrderService exists and its label is "OrderService".

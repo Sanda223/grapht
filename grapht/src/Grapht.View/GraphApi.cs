@@ -2,7 +2,7 @@ using Grapht.Core;
 
 namespace Grapht.View;
 
-public sealed record CommunityDto(int Id, string Label, int Size, string Color, List<string> TopMembers);
+public sealed record CommunityDto(int Id, string Label, int Size, string Color, List<string> TopMembers, List<string> TopMemberIds);
 public sealed record MetaEdgeDto(int Source, int Target, int Weight);
 public sealed record OverviewDto(List<CommunityDto> Communities, List<MetaEdgeDto> Edges, int NodeCount, int EdgeCount);
 public sealed record NodeDto(string Id, string Label, string? Type, string? Span, int Community, string CommunityLabel, int Degree, string Color);
@@ -18,14 +18,18 @@ public static class GraphApi
     /// sent to the browser.</summary>
     public static OverviewDto BuildOverview(KnowledgeGraph graph, Analysis analysis)
     {
-        var communities = analysis.Communities.OrderBy(kv => kv.Key).Select(kv => new CommunityDto(
-            kv.Key,
-            analysis.CommunityLabels[kv.Key],
-            kv.Value.Count,
-            Color(kv.Key),
-            kv.Value.OrderByDescending(graph.Degree).ThenBy(id => id, StringComparer.Ordinal)
-                    .Take(8).Select(id => graph.Nodes[id].Label).ToList()))
-            .ToList();
+        var communities = analysis.Communities.OrderBy(kv => kv.Key).Select(kv =>
+        {
+            var top = kv.Value.OrderByDescending(graph.Degree).ThenBy(id => id, StringComparer.Ordinal)
+                              .Take(8).ToList();
+            return new CommunityDto(
+                kv.Key,
+                analysis.CommunityLabels[kv.Key],
+                kv.Value.Count,
+                Color(kv.Key),
+                top.Select(id => graph.Nodes[id].Label).ToList(),
+                top);
+        }).ToList();
 
         var crossings = new Dictionary<(int, int), int>();
         foreach (var edge in graph.Edges)
