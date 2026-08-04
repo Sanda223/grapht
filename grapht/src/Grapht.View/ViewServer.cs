@@ -67,6 +67,8 @@ public static partial class ViewServer
             return focus is null ? Results.NotFound(new { error = $"No node with id \"{decodedId}\"" }) : Results.Ok(focus);
         });
 
+        app.MapGet("/api/full", () => Results.Ok(GraphApi.BuildFull(current().Graph)));
+
         app.MapGet("/api/search", (string? q, int? limit) =>
         {
             var snapshot = current();

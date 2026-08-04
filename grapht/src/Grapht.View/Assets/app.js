@@ -2,7 +2,8 @@
 
 const state = {
   overview: null,          // OverviewDto — counts + community lookups
-  mode: 'overview',        // 'overview' | 'focus'
+  full: null,              // cached /api/full node/link objects; positions persist across mode switches
+  mode: 'overview',        // 'overview' | 'focus' | 'full'
   focus: null,             // FocusDto driving the inspector
   focusId: null,
   nbhd: null,              // Set of ids in the current focus neighbourhood
@@ -10,6 +11,7 @@ const state = {
   hiddenRelations: new Set(),
   hideUnconnected: false,
   connected: new Set(),    // community node ids with at least one meta-edge
+  linkedVisible: new Set(),// node ids with ≥1 link surviving the relation filters (rebuilt per filter change)
   welcomed: false,         // welcome card shown and dismissed once per session
   nodes: new Map(),        // id -> node object; owned by the engine after graphData()
   links: new Map(),        // "from|to|relation" -> link object
@@ -17,9 +19,9 @@ const state = {
 
 const el = {};
 for (const id of ['search', 'suggestions', 'counts', 'inspector', 'breadcrumb',
-                  'relation-filters', 'theme', 'orbit', 'fit', 'canvas', 'labels',
+                  'relation-filters', 'theme', 'orbit', 'fit', 'whole', 'canvas', 'labels',
                   'hide-unconnected', 'hidden-count', 'welcome', 'welcome-stats',
-                  'start-community', 'start-hub', 'start-search', 'welcome-close'])
+                  'start-community', 'start-hub', 'start-whole', 'start-search', 'welcome-close'])
   el[id.replace(/-(.)/g, (_, c) => c.toUpperCase())] = document.getElementById(id);
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -33,8 +35,10 @@ async function json(url) {
   return res.json();
 }
 
+// Full colour everywhere until something is selected; then the selection's
+// neighbourhood keeps its colour and the rest fades back.
 const nodeColor = n =>
-  state.mode === 'overview' || n.id === state.focusId || state.nbhd?.has(n.id) ? n.color : faded(n.color);
+  !state.focusId || n.id === state.focusId || state.nbhd?.has(n.id) ? n.color : faded(n.color);
 
 const Graph = ForceGraph3D({ controlType: 'orbit' })(el.canvas)
   .backgroundColor(css('--ground'))
@@ -44,19 +48,25 @@ const Graph = ForceGraph3D({ controlType: 'orbit' })(el.canvas)
   .linkColor(() => css('--muted'))
   .linkOpacity(0.4)
   .linkWidth(l => l.weight ? Math.min(4, Math.sqrt(l.weight)) : 1)
-  .linkDirectionalArrowLength(l => l.weight ? 0 : 3)   // meta-edges are undirected
+  // Arrows only in focus mode: meta-edges are undirected, and in whole-graph mode
+  // five thousand arrow cones cost more frame time than the direction is worth.
+  .linkDirectionalArrowLength(l => state.mode === 'focus' && !l.weight ? 3 : 0)
   .linkDirectionalArrowRelPos(1)
   .onNodeHover(n => { el.canvas.style.cursor = n ? 'pointer' : ''; })
   .onNodeClick(node => {
     dismissWelcome();
     if (node.kind === 'community') {
       const c = state.overview.communities.find(x => x.id === node.cid);
-      if (c && c.topMemberIds.length) focusNode(c.topMemberIds[0]);
+      if (c && c.topMemberIds.length) goTo(c.topMemberIds[0]);
       return;
     }
-    focusNode(node.id);
+    goTo(node.id);
   })
-  .onBackgroundClick(() => { dismissWelcome(); hideSuggestions(); });
+  .onBackgroundClick(() => {
+    dismissWelcome();
+    hideSuggestions();
+    if (state.mode === 'full' && state.focusId) clearFullSelection();
+  });
 
 // One-shot "when the simulation settles" hook — used for zoomToFit / camera flights.
 let settleCb = null;
@@ -81,6 +91,7 @@ async function loadOverview() {
     state.connected.add('c' + e.target);
   }
   el.counts.textContent = `${state.overview.nodeCount.toLocaleString()} nodes · ${state.overview.edgeCount.toLocaleString()} edges`;
+  el.whole.setAttribute('aria-pressed', 'false');
   pushData();
   Graph.nodeColor(nodeColor);
   applyFilters();
@@ -89,6 +100,58 @@ async function loadOverview() {
   el.inspector.innerHTML = '<p class="empty">Click a node — or search above — to see what it is and what it touches.</p>';
   el.relationFilters.innerHTML = '<p class="empty">Focus a node to filter its relations.</p>';
   showWelcome();
+}
+
+// --- whole-graph mode: every node and edge at once, selection dims to neighbourhood ---
+
+async function loadFull() {
+  dismissWelcome();
+  if (!state.full) {
+    const full = await json('/api/full');
+    state.full = {
+      nodes: full.nodes.map(n => ({ id: n.id, label: n.label, color: n.color, type: n.type,
+                                    degree: n.degree, community: n.community,
+                                    val: Math.max(1, Math.min(10, n.degree * 0.35)) })),
+      links: full.edges.map(e => ({ source: e.source, target: e.target,
+                                    relation: e.relation, confidence: e.confidence })),
+    };
+  }
+  state.mode = 'full'; state.focus = null; state.focusId = null; state.nbhd = null; state.trail = [];
+  state.nodes.clear(); state.links.clear();
+  for (const n of state.full.nodes) state.nodes.set(n.id, n);          // same objects — positions persist
+  state.full.links.forEach((l, i) => state.links.set('f' + i, l));
+  el.whole.setAttribute('aria-pressed', 'true');
+  pushData();
+  Graph.nodeColor(nodeColor);
+  applyFilters();
+  settleThen(() => Graph.zoomToFit(800, 40));
+  renderBreadcrumb();
+  el.inspector.innerHTML = '<p class="empty">The whole web. Click any node to spotlight its neighbourhood.</p>';
+  renderRelationFilters();
+}
+
+async function selectInFull(id) {
+  const focus = await json('/api/node/' + encodeURIComponent(id));
+  state.focus = focus; state.focusId = focus.node.id;
+  state.nbhd = new Set([focus.node.id, ...focus.neighbours.map(n => n.node.id)]);
+  if (state.trail[state.trail.length - 1] !== focus.node.id) state.trail.push(focus.node.id);
+  Graph.nodeColor(nodeColor);
+  rebuildLabels();
+  renderInspector(); renderBreadcrumb();
+  flyTo(focus.node.id);
+}
+
+function clearFullSelection() {
+  state.focus = null; state.focusId = null; state.nbhd = null;
+  Graph.nodeColor(nodeColor);
+  rebuildLabels();
+  el.inspector.innerHTML = '<p class="empty">The whole web. Click any node to spotlight its neighbourhood.</p>';
+}
+
+// Route a node jump to whichever mode is active: whole-graph selects in place,
+// everything else uses the focus/expand canvas.
+function goTo(id) {
+  return state.mode === 'full' ? selectInFull(id) : focusNode(id);
 }
 
 function addNode(dto, val, near) {
@@ -105,8 +168,9 @@ function addNode(dto, val, near) {
 async function focusNode(id) {
   dismissWelcome();
   const focus = await json('/api/node/' + encodeURIComponent(id));
-  if (state.mode === 'overview') { state.nodes.clear(); state.links.clear(); }  // leave the meta-graph
+  if (state.mode !== 'focus') { state.nodes.clear(); state.links.clear(); }  // leave the meta-graph / whole web
   state.mode = 'focus'; state.focus = focus; state.focusId = focus.node.id;
+  el.whole.setAttribute('aria-pressed', 'false');
   if (state.trail[state.trail.length - 1] !== focus.node.id) state.trail.push(focus.node.id);
 
   addNode(focus.node, 8, null);
@@ -158,9 +222,12 @@ function showWelcome() {
   function wire(btn, community, sub) {
     if (!community || !community.topMemberIds.length) { btn.hidden = true; return; }
     btn.querySelector('.muted').textContent = sub(community);
-    btn.onclick = () => focusNode(community.topMemberIds[0]);
+    btn.onclick = () => goTo(community.topMemberIds[0]);
   }
 }
+
+el.startWhole.addEventListener('click', loadFull);
+el.whole.addEventListener('click', () => state.mode === 'full' ? loadOverview() : loadFull());
 
 function dismissWelcome() {
   if (!state.welcomed) { state.welcomed = true; el.welcome.hidden = true; }
@@ -173,13 +240,18 @@ el.welcomeClose.addEventListener('click', dismissWelcome);
 
 const endpointId = e => typeof e === 'object' ? e.id : e;  // engine objectifies link endpoints
 
-function hasVisibleLink(id) {
+// One O(edges) pass per filter change instead of an O(edges) scan per node —
+// whole-graph mode multiplies both counts by ~50, so the per-node scan had to go.
+function rebuildLinkedVisible() {
+  state.linkedVisible = new Set();
   for (const l of state.links.values())
-    if ((endpointId(l.source) === id || endpointId(l.target) === id) &&
-        (!l.relation || !state.hiddenRelations.has(l.relation)))
-      return true;
-  return false;
+    if (!l.relation || !state.hiddenRelations.has(l.relation)) {
+      state.linkedVisible.add(endpointId(l.source));
+      state.linkedVisible.add(endpointId(l.target));
+    }
 }
+
+const hasVisibleLink = id => state.linkedVisible.has(id);
 
 function nodeVisible(n) {
   if (n.kind === 'community')
@@ -192,6 +264,7 @@ function nodeVisible(n) {
 }
 
 function applyFilters() {
+  rebuildLinkedVisible();
   Graph.linkVisibility(l => !l.relation || !state.hiddenRelations.has(l.relation));
   Graph.nodeVisibility(nodeVisible);
   const hidden = [...state.nodes.values()].filter(n => !nodeVisible(n)).length;
@@ -218,6 +291,15 @@ function labelSet() {
     return [...state.nodes.values()].filter(nodeVisible)
       .sort((a, b) => (b.val ?? 0) - (a.val ?? 0))
       .slice(0, 80);
+  if (state.mode === 'full') {
+    const pool = [...state.nodes.values()].filter(nodeVisible);
+    if (state.focusId && state.nbhd)
+      return pool.filter(n => n.id === state.focusId || state.nbhd.has(n.id))
+        .sort((a, b) => a.id === state.focusId ? -1 : b.id === state.focusId ? 1
+                      : (b.degree ?? 0) - (a.degree ?? 0))
+        .slice(0, 60);
+    return pool.sort((a, b) => (b.degree ?? 0) - (a.degree ?? 0)).slice(0, 40);
+  }
   if (!state.nbhd) return [];
   return [...state.nodes.values()]
     .filter(n => n.id === state.focusId || (state.nbhd.has(n.id) && nodeVisible(n) && hasVisibleLink(n.id)))
@@ -280,7 +362,7 @@ function renderInspector() {
           <span class="conf">${n.confidence === 'EXTRACTED' ? '' : esc(n.confidence.toLowerCase())}</span></button>`).join('')}
       </div>`).join('')}`;
   el.inspector.querySelectorAll('.rel').forEach(b =>
-    b.addEventListener('click', () => focusNode(b.dataset.id)));
+    b.addEventListener('click', () => goTo(b.dataset.id)));
 }
 
 function renderBreadcrumb() {
@@ -295,14 +377,17 @@ function renderBreadcrumb() {
     if (i < 0) return loadOverview();
     const id = state.trail[i];
     state.trail = state.trail.slice(0, i);
-    focusNode(id);
+    goTo(id);
   }));
   el.breadcrumb.scrollLeft = el.breadcrumb.scrollWidth;
 }
 
 function renderRelationFilters() {
   const counts = {};
-  for (const n of state.focus.neighbours) counts[n.relation] = (counts[n.relation] || 0) + 1;
+  if (state.mode === 'full')
+    for (const l of state.links.values()) { if (l.relation) counts[l.relation] = (counts[l.relation] || 0) + 1; }
+  else if (state.focus)
+    for (const n of state.focus.neighbours) counts[n.relation] = (counts[n.relation] || 0) + 1;
   el.relationFilters.innerHTML = Object.entries(counts).sort().map(([rel, count]) => `
     <label class="filter">
       <input type="checkbox" data-rel="${esc(rel)}" ${state.hiddenRelations.has(rel) ? '' : 'checked'}>
@@ -356,7 +441,7 @@ async function searchFor(term) {
     b.addEventListener('click', () => {
       hideSuggestions();
       el.search.value = '';
-      focusNode(b.dataset.id);
+      goTo(b.dataset.id);
     }));
 }
 

@@ -6,6 +6,9 @@ public sealed record CommunityDto(int Id, string Label, int Size, string Color, 
 public sealed record MetaEdgeDto(int Source, int Target, int Weight);
 public sealed record OverviewDto(List<CommunityDto> Communities, List<MetaEdgeDto> Edges, int NodeCount, int EdgeCount);
 public sealed record NodeDto(string Id, string Label, string? Type, string? Span, int Community, string CommunityLabel, int Degree, string Color);
+public sealed record FullNodeDto(string Id, string Label, string? Type, int Community, int Degree, string Color);
+public sealed record FullEdgeDto(string Source, string Target, string Relation, string Confidence);
+public sealed record FullDto(List<FullNodeDto> Nodes, List<FullEdgeDto> Edges);
 public sealed record NeighbourDto(NodeDto Node, string Relation, string Direction, string Confidence);
 public sealed record FocusDto(NodeDto Node, List<NeighbourDto> Neighbours);
 
@@ -72,6 +75,25 @@ public static class GraphApi
             .ToList();
 
         return new FocusDto(Describe(graph, analysis, node), neighbours);
+    }
+
+    /// <summary>The whole graph, slimmed for rendering: every node and edge, colors and
+    /// degrees precomputed. This is the one deliberate exception to "the full graph is
+    /// never sent" — opt-in via the whole-graph mode, loopback-only, and ~1MB at eShop
+    /// scale. Span/community-label detail still comes from /api/node on selection.</summary>
+    public static FullDto BuildFull(KnowledgeGraph graph)
+    {
+        var nodes = graph.Nodes.Values.OrderBy(n => n.Id, StringComparer.Ordinal)
+            .Select(n => new FullNodeDto(n.Id, n.Label, n.Type, n.Community ?? 0,
+                                         graph.Degree(n.Id), Color(n.Community ?? 0)))
+            .ToList();
+        var edges = graph.Edges
+            .OrderBy(e => e.Source, StringComparer.Ordinal)
+            .ThenBy(e => e.Target, StringComparer.Ordinal)
+            .ThenBy(e => e.Relation, StringComparer.Ordinal)
+            .Select(e => new FullEdgeDto(e.Source, e.Target, e.Relation, e.Confidence))
+            .ToList();
+        return new FullDto(nodes, edges);
     }
 
     /// <summary>Ranked search for the viewer's typeahead: exact (label, id, or label+"()")

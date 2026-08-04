@@ -91,6 +91,24 @@ public class ViewApiTests : IClassFixture<BuiltGraphFixture>
     }
 
     [Fact]
+    public void FullReturnsEveryNodeAndEdgeWithCommunityColors()
+    {
+        var full = GraphApi.BuildFull(_graph);
+
+        Assert.Equal(_graph.NodeCount, full.Nodes.Count);
+        Assert.Equal(_graph.EdgeCount, full.Edges.Count);
+        Assert.All(full.Nodes, n => Assert.StartsWith("hsl(", n.Color));
+        // deterministic ordering and referential integrity
+        Assert.Equal(full.Nodes.Select(n => n.Id).Order(StringComparer.Ordinal), full.Nodes.Select(n => n.Id));
+        var ids = full.Nodes.Select(n => n.Id).ToHashSet();
+        Assert.All(full.Edges, e =>
+        {
+            Assert.Contains(e.Source, ids);
+            Assert.Contains(e.Target, ids);
+        });
+    }
+
+    [Fact]
     public void SearchRanksExactLabelMatchFirst()
     {
         // Fixture fact: SampleApp.Services.OrderService exists and its label is "OrderService".

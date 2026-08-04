@@ -74,6 +74,18 @@ public class ViewServerHttpTests : IClassFixture<ViewServerFixture>
     }
 
     [Fact]
+    public async Task FullReturnsTheEntireGraphAsJson()
+    {
+        var response = await _server.Client.GetAsync(Url("/api/full"));
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("\"nodes\":", body);
+        Assert.Contains("\"edges\":", body);
+        Assert.Contains("SampleApp.Services.OrderService", body);
+    }
+
+    [Fact]
     public async Task ServesVendored3dForceGraphBundle()
     {
         var response = await _server.Client.GetAsync(Url("/3d-force-graph.min.js"));

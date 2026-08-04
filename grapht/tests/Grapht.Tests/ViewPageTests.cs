@@ -47,6 +47,8 @@ public class ViewPageTests
             Assert.Contains("id=\"hide-unconnected\"", html); // unconnected filter present
             Assert.Contains("id=\"welcome\"", html);          // first-load guidance card
             Assert.Contains("id=\"bottombar\"", html);        // breadcrumb + view controls bar
+            Assert.Contains("id=\"whole\"", html);            // whole-graph mode toggle
+            Assert.Contains("id=\"start-whole\"", html);      // whole-graph door on welcome card
             Assert.DoesNotContain("cytoscape", html);         // old renderer fully gone
             File.Delete(dom);
             File.Delete(log);
