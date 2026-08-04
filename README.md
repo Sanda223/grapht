@@ -7,7 +7,7 @@ Turn a .NET solution into a queryable knowledge graph that GitHub Copilot (VS Co
 
 Point it at a `.sln` and it builds a graph of every type, method, namespace, Blazor component, route, and JS-interop call — who calls what, who implements what, which page renders which component. A resident MCP server keeps the graph fresh as you edit and gives Copilot `query`, `path`, `explain`, and `impact` tools. Extraction is Roslyn's semantic model: deterministic, no LLM, fully local.
 
-Inspired by [Graphify](https://github.com/Graphify-Labs/graphify) (MIT, © Safi Shamsi), rebuilt in C# and narrowed to one job: **C#/Blazor codebases, consumed through Copilot in VS Code.**
+Inspired by [Graphify](https://github.com/Graphify-Labs/graphify), but an independent implementation sharing no code with it — focused on **C# and .NET applications**, consumed through Copilot in VS Code.
 
 ## Quick start
 
@@ -241,4 +241,4 @@ Per-project traces are just the two files you added (`.vscode/mcp.json`, the ins
 
 ## License
 
-MIT. Design credit: [Graphify](https://github.com/Graphify-Labs/graphify), MIT License, Copyright (c) 2026 Safi Shamsi. `graph.html` embeds [vis-network](https://visjs.github.io/vis-network/) (MIT/Apache-2.0).
+MIT. grapht is an independent implementation inspired by [Graphify](https://github.com/Graphify-Labs/graphify) — it deliberately speaks the same graph.json contract and query vocabulary, but shares no code. `graph.html` embeds [vis-network](https://visjs.github.io/vis-network/) (MIT/Apache-2.0); the interactive viewer embeds [3d-force-graph](https://github.com/vasturiano/3d-force-graph) (MIT).
