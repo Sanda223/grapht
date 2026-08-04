@@ -70,6 +70,35 @@ public static class GraphApi
         return new FocusDto(Describe(graph, analysis, node), neighbours);
     }
 
+    /// <summary>Ranked search for the viewer's typeahead: exact (label, id, or label+"()")
+    /// beats prefix beats substring; within a tier, higher degree first. Pure, like the
+    /// other builders — the endpoint stays a one-liner.</summary>
+    public static List<NodeDto> Search(KnowledgeGraph graph, Analysis analysis, string query, int limit = 10)
+    {
+        var q = query.Trim();
+        if (q.Length == 0)
+            return [];
+
+        return graph.Nodes.Values
+            .Select(n => (Node: n, Tier: Tier(n)))
+            .Where(x => x.Tier < 3)
+            .OrderBy(x => x.Tier)
+            .ThenByDescending(x => graph.Degree(x.Node.Id))
+            .ThenBy(x => x.Node.Id, StringComparer.Ordinal)
+            .Take(limit)
+            .Select(x => Describe(graph, analysis, x.Node))
+            .ToList();
+
+        int Tier(Node n) =>
+            n.Label.Equals(q, StringComparison.OrdinalIgnoreCase)
+                || n.Id.Equals(q, StringComparison.OrdinalIgnoreCase)
+                || n.Label.Equals(q + "()", StringComparison.OrdinalIgnoreCase) ? 0
+            : n.Label.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 1
+            : n.Label.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || n.Id.Contains(q, StringComparison.OrdinalIgnoreCase) ? 2
+            : 3;
+    }
+
     private static NodeDto Describe(KnowledgeGraph graph, Analysis analysis, Node node)
     {
         var community = node.Community ?? 0;
