@@ -10,6 +10,7 @@
 <header>
   <input id="search" type="search" placeholder="Search types, methods, files…" autocomplete="off" spellcheck="false">
   <div id="brand"><strong>grapht</strong> <span id="counts" class="muted"></span></div>
+  <button id="orbit" type="button" title="Toggle auto-orbit" aria-label="Toggle auto-orbit" aria-pressed="true">◉</button>
   <button id="theme" type="button" title="Toggle theme" aria-label="Toggle theme">◐</button>
 </header>
 <main>
@@ -19,6 +20,7 @@
   </aside>
   <section id="canvas-wrap">
     <div id="canvas"></div>
+    <div id="labels" aria-hidden="true"></div>
     <nav id="breadcrumb" aria-label="Focus history"></nav>
   </section>
   <aside id="inspector">
@@ -26,7 +28,7 @@
   </aside>
 </main>
 <div id="suggestions" role="listbox" hidden></div>
-<script src="/cytoscape.min.js"></script>
+<script src="/3d-force-graph.min.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

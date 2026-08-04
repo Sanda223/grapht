@@ -59,7 +59,6 @@ public static partial class ViewServer
         app.MapGet("/", () => Results.Content(Asset("index.html"), "text/html; charset=utf-8"));
         app.MapGet("/app.css", () => Results.Content(Asset("app.css"), "text/css; charset=utf-8"));
         app.MapGet("/app.js", () => Results.Content(Asset("app.js"), "text/javascript; charset=utf-8"));
-        app.MapGet("/cytoscape.min.js", () => Results.Content(Asset("cytoscape.min.js"), "text/javascript; charset=utf-8"));
         app.MapGet("/3d-force-graph.min.js", () => Results.Content(Asset("3d-force-graph.min.js"), "text/javascript; charset=utf-8"));
 
         var url = $"http://127.0.0.1:{port}";
