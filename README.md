@@ -1,5 +1,8 @@
 # grapht
 
+[![CI](https://github.com/Sanda223/grapht/actions/workflows/ci.yml/badge.svg)](https://github.com/Sanda223/grapht/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-teal.svg)](LICENSE)
+
 Turn a .NET solution into a queryable knowledge graph that GitHub Copilot (VS Code chat / agent mode) uses instead of grepping.
 
 Point it at a `.sln` and it builds a graph of every type, method, namespace, Blazor component, route, and JS-interop call — who calls what, who implements what, which page renders which component. A resident MCP server keeps the graph fresh as you edit and gives Copilot `query`, `path`, `explain`, and `impact` tools. Extraction is Roslyn's semantic model: deterministic, no LLM, fully local.
